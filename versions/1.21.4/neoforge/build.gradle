@@ -28,11 +28,6 @@ neoForge {
     }
 }
 
-dependencies {
-    implementation "org.java-websocket:Java-WebSocket:1.5.6"
-    jarJar "org.java-websocket:Java-WebSocket:1.5.6"
-    additionalRuntimeClasspath "org.java-websocket:Java-WebSocket:1.5.6"
-}
 
 // Implement mcgradleconventions loader attribute
 def loaderAttribute = Attribute.of('io.github.mcgradleconventions.loader', String)

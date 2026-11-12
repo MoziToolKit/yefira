@@ -1,5 +1,7 @@
 package com.mozi1924.yefira.encoder;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -120,43 +122,52 @@ public class VisualEntityEntry {
         List<VisualEntityEntry> sorted = new ArrayList<>(entities);
         sorted.sort(Comparator.comparing(e -> e.getUuid().toString()));
 
-        XXHash64 hasher = new XXHash64(0L);
+        int totalLen = 0;
+        for (VisualEntityEntry e : sorted) {
+            byte[] idBytes = e.getId().getBytes(StandardCharsets.UTF_8);
+            byte[] payload = e.getCustomPayload();
+            totalLen += 71 + idBytes.length + (payload != null ? payload.length : 0);
+        }
+
+        ByteBuffer buf = ByteBuffer.allocate(totalLen).order(ByteOrder.LITTLE_ENDIAN);
         for (VisualEntityEntry e : sorted) {
             // 1. UUID: most_sig LE, least_sig LE (16 bytes)
-            hasher.updateLE64(e.getUuid().getMostSignificantBits());
-            hasher.updateLE64(e.getUuid().getLeastSignificantBits());
+            buf.putLong(e.getUuid().getMostSignificantBits());
+            buf.putLong(e.getUuid().getLeastSignificantBits());
 
             // 2. Entity Type ID (uint16 length + UTF-8 bytes)
             byte[] idBytes = e.getId().getBytes(StandardCharsets.UTF_8);
-            hasher.updateLE16((short) idBytes.length);
-            hasher.update(idBytes);
+            buf.putShort((short) idBytes.length);
+            buf.put(idBytes);
 
             // 3. Position (3 x 8 bytes IEEE 754 double LE)
-            hasher.updateLE64(Double.doubleToRawLongBits(e.getX()));
-            hasher.updateLE64(Double.doubleToRawLongBits(e.getY()));
-            hasher.updateLE64(Double.doubleToRawLongBits(e.getZ()));
+            buf.putLong(Double.doubleToRawLongBits(e.getX()));
+            buf.putLong(Double.doubleToRawLongBits(e.getY()));
+            buf.putLong(Double.doubleToRawLongBits(e.getZ()));
 
             // 4. Rotation (3 x 4 bytes IEEE 754 float LE)
-            hasher.updateLE32(Float.floatToRawIntBits(e.getPitch()));
-            hasher.updateLE32(Float.floatToRawIntBits(e.getYaw()));
-            hasher.updateLE32(Float.floatToRawIntBits(e.getRoll()));
+            buf.putInt(Float.floatToRawIntBits(e.getPitch()));
+            buf.putInt(Float.floatToRawIntBits(e.getYaw()));
+            buf.putInt(Float.floatToRawIntBits(e.getRoll()));
 
             // 5. Scale (3 x 4 bytes IEEE 754 float LE)
-            hasher.updateLE32(Float.floatToRawIntBits(e.getScaleX()));
-            hasher.updateLE32(Float.floatToRawIntBits(e.getScaleY()));
-            hasher.updateLE32(Float.floatToRawIntBits(e.getScaleZ()));
+            buf.putInt(Float.floatToRawIntBits(e.getScaleX()));
+            buf.putInt(Float.floatToRawIntBits(e.getScaleY()));
+            buf.putInt(Float.floatToRawIntBits(e.getScaleZ()));
 
             // 6. Facing (1 byte)
-            hasher.update(e.getFacing());
+            buf.put(e.getFacing());
 
             // 7. Custom Payload (uint32 length + UTF-8 JSON bytes)
             byte[] payload = e.getCustomPayload();
-            hasher.updateLE32(payload.length);
-            if (payload.length > 0) {
-                hasher.update(payload);
+            if (payload != null && payload.length > 0) {
+                buf.putInt(payload.length);
+                buf.put(payload);
+            } else {
+                buf.putInt(0);
             }
         }
-        return hasher.digest();
+        return NativeSync.nativeXxHash64(buf.array(), 0L);
     }
 
     @Override

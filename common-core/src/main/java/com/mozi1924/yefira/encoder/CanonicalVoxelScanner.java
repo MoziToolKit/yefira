@@ -45,10 +45,9 @@ public class CanonicalVoxelScanner {
         public final long totalVoxels;
         public final String dimension;
         public final List<String> blockPalette;
+        public final int[] voxelIndices;
         public final List<String> biomePalette;
-        public final byte[] payload;
-        public final int paletteBitsPerBlock;
-        public final int biomeBitsPerQuart;
+        public final int[] biomeIndices;
         public final long stateHash;
         public final List<BlockDataEncoder.EntityEntry> entities;
 
@@ -58,25 +57,9 @@ public class CanonicalVoxelScanner {
                 long totalVoxels,
                 String dimension,
                 List<String> blockPalette,
+                int[] voxelIndices,
                 List<String> biomePalette,
-                byte[] payload,
-                int paletteBitsPerBlock,
-                int biomeBitsPerQuart,
-                long stateHash
-        ) {
-            this(minPos, sizeX, sizeY, sizeZ, totalVoxels, dimension, blockPalette, biomePalette, payload, paletteBitsPerBlock, biomeBitsPerQuart, stateHash, Collections.emptyList());
-        }
-
-        public BaselineScanResult(
-                BlockPos minPos,
-                int sizeX, int sizeY, int sizeZ,
-                long totalVoxels,
-                String dimension,
-                List<String> blockPalette,
-                List<String> biomePalette,
-                byte[] payload,
-                int paletteBitsPerBlock,
-                int biomeBitsPerQuart,
+                int[] biomeIndices,
                 long stateHash,
                 List<BlockDataEncoder.EntityEntry> entities
         ) {
@@ -87,10 +70,9 @@ public class CanonicalVoxelScanner {
             this.totalVoxels = totalVoxels;
             this.dimension = dimension;
             this.blockPalette = blockPalette;
+            this.voxelIndices = voxelIndices;
             this.biomePalette = biomePalette;
-            this.payload = payload;
-            this.paletteBitsPerBlock = paletteBitsPerBlock;
-            this.biomeBitsPerQuart = biomeBitsPerQuart;
+            this.biomeIndices = biomeIndices;
             this.stateHash = stateHash;
             this.entities = entities != null ? entities : Collections.emptyList();
         }
@@ -229,20 +211,6 @@ public class CanonicalVoxelScanner {
         int sizeZ = box.getSizeZ();
         long totalVoxels = (long) sizeX * sizeY * sizeZ;
 
-        XXHash64 hasher = new XXHash64(0);
-
-        // 1. Header Hash (Sparse canonical encoding: 0x02)
-        hasher.update((byte) 0x02);
-        byte[] dimBytes = dimension.getBytes(StandardCharsets.UTF_8);
-        hasher.updateLE16((short) dimBytes.length);
-        hasher.update(dimBytes);
-        hasher.updateLE32(minX);
-        hasher.updateLE32(minY);
-        hasher.updateLE32(minZ);
-        hasher.updateLE32(sizeX);
-        hasher.updateLE32(sizeY);
-        hasher.updateLE32(sizeZ);
-
         List<String> blockPalette = new ArrayList<>();
         Map<String, Integer> blockPaletteLookup = new HashMap<>();
         Map<BlockState, Integer> stateToPaletteId = new IdentityHashMap<>();
@@ -280,7 +248,6 @@ public class CanonicalVoxelScanner {
         }
 
         // Pre-fetch block entities across selection bounding box for sparse verification
-        Map<BlockPos, byte[]> entityByteMap = new HashMap<>();
         List<BlockDataEncoder.EntityEntry> entities = new ArrayList<>();
         try {
             com.mozi1924.yefira.compat.ILevelCompat levelCompat = com.mozi1924.yefira.compat.VersionCompat.level();
@@ -297,7 +264,6 @@ public class CanonicalVoxelScanner {
                                 int ry = p.getY() - minY;
                                 int relZ = p.getZ() - minZ;
                                 entities.add(new BlockDataEncoder.EntityEntry(rx, ry, relZ, json));
-                                entityByteMap.put(p.immutable(), json.getBytes(StandardCharsets.UTF_8));
                             }
                         }
                     }
@@ -307,8 +273,6 @@ public class CanonicalVoxelScanner {
         }
 
         Map<Long, String[]> sectionBiomesCache = new HashMap<>();
-        Map<String, byte[]> biomeUtf8Cache = new HashMap<>();
-        BlockPos.MutableBlockPos entityPosQuery = new BlockPos.MutableBlockPos();
 
         // 2. Voxel Scan (Y bottom-up, Z next, X fastest)
         for (int y = minY; y < maxY; y++) {
@@ -360,34 +324,6 @@ public class CanonicalVoxelScanner {
                         for (; x < nextX; x++) {
                             BlockState state = section.getBlockState(x & 15, ly, lz);
                             CanonicalBlock cb = getCanonicalBlock(state);
-
-                            if (cb != CANONICAL_AIR) {
-                                int rx = x - minX;
-                                int ry = y - minY;
-                                int rz = z - minZ;
-                                hasher.updateLE32(rx);
-                                hasher.updateLE32(ry);
-                                hasher.updateLE32(rz);
-
-                                hasher.updateLE16((short) cb.utf8Bytes.length);
-                                hasher.update(cb.utf8Bytes);
-
-                                int sqx = (x & 15) >> 2;
-                                int sqz = lz >> 2;
-                                String bStr = getQuartBiome(level, sectionBiomesCache, secX, secY, secZ, sqx, sqy, sqz);
-                                byte[] bBytes = biomeUtf8Cache.computeIfAbsent(bStr, s -> s.getBytes(StandardCharsets.UTF_8));
-                                hasher.updateLE16((short) bBytes.length);
-                                hasher.update(bBytes);
-
-                                entityPosQuery.set(x, y, z);
-                                byte[] entBytes = entityByteMap.get(entityPosQuery);
-                                if (entBytes != null && entBytes.length > 0) {
-                                    hasher.updateLE32(entBytes.length);
-                                    hasher.update(entBytes);
-                                } else {
-                                    hasher.updateLE32(0);
-                                }
-                            }
 
                             // IdentityHashMap lookup by BlockState reference
                             Integer idx = stateToPaletteId.get(state);
@@ -462,60 +398,16 @@ public class CanonicalVoxelScanner {
             biomePalette.add("minecraft:plains");
         }
 
-        long finalStateHash = hasher.digest();
-
-        // 4. Pack payload (LSB packed indices)
-        int bitsPerBlock = (blockPalette.size() <= 256) ? 8 : 16;
-        int voxelBytesLen = (int) totalVoxels * (bitsPerBlock / 8);
-
-        // Biome packing (if multiple biomes)
-        boolean hasMultipleBiomes = biomePalette.size() > 1;
-        int biomeBits = hasMultipleBiomes ? 8 : 0;
-        int biomeBytesLen = hasMultipleBiomes ? totalQuarts : 0;
-
-        byte[] payload = new byte[voxelBytesLen + biomeBytesLen];
-
-        if (bitsPerBlock == 8) {
-            for (int i = 0; i < totalVoxels; i++) {
-                if ((i & 0xFFFFF) == 0
-                        && checkAbort(cancelled, scanStartNanos, maxScanNanos, maxDurationMillis)) {
-                    return null;
-                }
-                payload[i] = (byte) voxelIndices[i];
-            }
-        } else {
-            ByteBuffer buf = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN);
-            for (int i = 0; i < totalVoxels; i++) {
-                if ((i & 0xFFFFF) == 0
-                        && checkAbort(cancelled, scanStartNanos, maxScanNanos, maxDurationMillis)) {
-                    return null;
-                }
-                buf.putShort((short) (voxelIndices[i] & 0xFFFF));
-            }
-        }
-
-        if (hasMultipleBiomes) {
-            int offset = voxelBytesLen;
-            for (int i = 0; i < totalQuarts; i++) {
-                if ((i & 0xFFFFF) == 0
-                        && checkAbort(cancelled, scanStartNanos, maxScanNanos, maxDurationMillis)) {
-                    return null;
-                }
-                payload[offset + i] = (byte) biomeIndices[i];
-            }
-        }
-
         return new BaselineScanResult(
                 min,
                 sizeX, sizeY, sizeZ,
                 totalVoxels,
                 dimension,
                 blockPalette,
+                voxelIndices,
                 biomePalette,
-                payload,
-                bitsPerBlock,
-                biomeBits,
-                finalStateHash,
+                biomeIndices,
+                0L,
                 entities
         );
     }

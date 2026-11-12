@@ -45,3 +45,9 @@ mods/
 # Python Script Artifacts
 __pycache__/
 *.py[cod]
+
+# Native Shared Libraries (JNI)
+common-core/src/main/resources/natives/
+*.dylib
+*.so
+*.dll

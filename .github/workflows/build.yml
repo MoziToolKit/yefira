@@ -9,6 +9,10 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      libmtk_ref:
+        description: 'Branch or commit of libmozitoolkit to build JNI from'
+        required: false
+        default: 'main'
       release_type:
         description: 'Release type (auto, rolling, or official)'
         required: true
@@ -27,9 +31,87 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  # =========================================================================
+  # 阶段 1：跨平台 JNI 动态库矩阵编译
+  # =========================================================================
+  build-natives:
+    name: Native (${{ matrix.platform_dir }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform_dir: linux-x64
+            artifact_file: libmtk_jni.so
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            platform_dir: linux-arm64
+            artifact_file: libmtk_jni.so
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform_dir: windows-x64
+            artifact_file: mtk_jni.dll
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform_dir: macos-arm64
+            artifact_file: libmtk_jni.dylib
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            platform_dir: macos-x64
+            artifact_file: libmtk_jni.dylib
+
+    steps:
+      - name: Checkout libmozitoolkit
+        uses: actions/checkout@v4
+        with:
+          repository: MoziToolKit/libmozitoolkit
+          ref: ${{ inputs.libmtk_ref || 'main' }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: jni-${{ matrix.platform_dir }}
+          workspaces: ". -> target"
+
+      - name: Build mtk-jni cdylib
+        run: |
+          cargo build --release -p mtk-jni --target ${{ matrix.target }}
+
+      - name: Stage native binary
+        shell: bash
+        run: |
+          mkdir -p stage/${{ matrix.platform_dir }}
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp -v target/${{ matrix.target }}/release/mtk_jni.dll stage/${{ matrix.platform_dir }}/
+          else
+            cp -v target/${{ matrix.target }}/release/${{ matrix.artifact_file }} stage/${{ matrix.platform_dir }}/
+          fi
+          ls -la stage/${{ matrix.platform_dir }}/
+
+      - name: Upload platform native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.platform_dir }}
+          path: stage/
+          if-no-files-found: error
+
+  # =========================================================================
+  # 阶段 2：注入 Natives 并编译全版本 Minecraft 模组
+  # =========================================================================
   build:
     name: Build Minecraft ${{ matrix.version }}
+    needs: build-natives
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -57,10 +139,28 @@ jobs:
             task: "build26"
 
     steps:
-      - name: checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: validate loader metadata filenames
+      - name: Download all native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: common-core/src/main/resources/natives
+          merge-multiple: true
+
+      - name: Verify bundled natives layout
+        run: |
+          echo "=== Bundled natives structure in common-core ==="
+          ls -laR common-core/src/main/resources/natives/
+          test -f common-core/src/main/resources/natives/linux-x64/libmtk_jni.so
+          test -f common-core/src/main/resources/natives/linux-arm64/libmtk_jni.so
+          test -f common-core/src/main/resources/natives/windows-x64/mtk_jni.dll
+          test -f common-core/src/main/resources/natives/macos-arm64/libmtk_jni.dylib
+          test -f common-core/src/main/resources/natives/macos-x64/libmtk_jni.dylib
+          echo "All 5 native platform binaries successfully bundled!"
+
+      - name: Validate loader metadata filenames
         run: |
           # NeoForge 20.4.x uses FML 2.0.17, which only reads META-INF/mods.toml.
           test -f versions/1.20.4/neoforge/src/main/resources/META-INF/mods.toml
@@ -69,29 +169,29 @@ jobs:
             test -f versions/$v/neoforge/src/main/resources/META-INF/neoforge.mods.toml
           done
 
-      - name: validate gradle wrapper
+      - name: Validate gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
 
-      - name: setup jdk
+      - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.java }}
           distribution: ${{ matrix.distribution }}
 
-      - name: setup gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: make gradle wrapper executable
+      - name: Make gradle wrapper executable
         run: |
           chmod +x ./gradlew
           chmod +x ./versions/${{ matrix.version }}/gradlew
 
-      - name: build minecraft ${{ matrix.version }}
+      - name: Build Minecraft ${{ matrix.version }}
         run: |
           cd versions/${{ matrix.version }}
           ./gradlew build
 
-      - name: stage executable mod jars
+      - name: Stage executable mod jars
         run: |
           mkdir -p build/dist-mods
           for dir in versions/${{ matrix.version }}/*/build/libs; do
@@ -101,14 +201,14 @@ jobs:
           done
           ls -lh build/dist-mods/
 
-      - name: upload executable mod jars
+      - name: Upload executable mod jars
         uses: actions/upload-artifact@v4
         with:
           name: yefira-mod-jars-${{ matrix.version }}
           path: build/dist-mods/*.jar
           if-no-files-found: error
 
-      - name: upload sources and javadoc
+      - name: Upload sources and javadoc
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -118,6 +218,9 @@ jobs:
             versions/${{ matrix.version }}/*/build/libs/*-javadoc.jar
           if-no-files-found: warn
 
+  # =========================================================================
+  # 阶段 3：GitHub Releases 聚合分发
+  # =========================================================================
   publish-release:
     name: Publish Release
     needs: build
@@ -221,6 +324,9 @@ jobs:
               "- **1.21.1** (Fabric / NeoForge)" \
               "- **1.21.4** (Fabric / NeoForge)" \
               "- **26.2** (Fabric / NeoForge)" \
+              "" \
+              "### Native Engine" \
+              "- Embedded **libmtk-jni** (Windows x64, macOS arm64/x64, Linux x64/arm64)" \
               "" \
               "Built on $(date -u '+%Y-%m-%d %H:%M:%S UTC')." > /tmp/ci_release_notes.md
 

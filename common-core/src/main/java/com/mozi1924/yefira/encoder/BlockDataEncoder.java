@@ -8,9 +8,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -121,6 +118,10 @@ public class BlockDataEncoder {
         public EntityEntry(int relX, int relY, int relZ, String json) {
             this(relX, relY, relZ, json != null ? json.getBytes(StandardCharsets.UTF_8) : new byte[0]);
         }
+
+        public String getJson() {
+            return new String(payload, StandardCharsets.UTF_8);
+        }
     }
 
     public static HelloPacket decodeHello(ByteBuffer buf) {
@@ -172,261 +173,6 @@ public class BlockDataEncoder {
         return p;
     }
 
-    public static byte[] encodeWelcome(
-            short negotiatedVersion,
-            byte[] serverUuid,
-            long epoch,
-            long serverSeq,
-            BlockPos currentMin,
-            int sizeX, int sizeY, int sizeZ,
-            long currentStateHash,
-            byte decision,
-            String messageOrDimension
-    ) {
-        byte[] dimBytes = (messageOrDimension != null ? messageOrDimension : "").getBytes(StandardCharsets.UTF_8);
-        ByteBuffer buf = ByteBuffer.allocate(4 + 2 + 16 + 8 + 8 + 12 + 12 + 8 + 1 + 2 + dimBytes.length);
-        buf.order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(MAGIC);
-        buf.put(PROTOCOL_VERSION);
-        buf.put(OPCODE_WELCOME);
-        buf.putShort(negotiatedVersion);
-        if (serverUuid != null && serverUuid.length >= 16) {
-            buf.put(serverUuid, 0, 16);
-        } else {
-            buf.put(new byte[16]);
-        }
-        buf.putLong(epoch);
-        buf.putLong(serverSeq);
-        buf.putInt(currentMin != null ? currentMin.getX() : 0);
-        buf.putInt(currentMin != null ? currentMin.getY() : 0);
-        buf.putInt(currentMin != null ? currentMin.getZ() : 0);
-        buf.putInt(sizeX);
-        buf.putInt(sizeY);
-        buf.putInt(sizeZ);
-        buf.putLong(currentStateHash);
-        buf.put(decision);
-        buf.putShort((short) dimBytes.length);
-        buf.put(dimBytes);
-        return buf.array();
-    }
-
-    public static byte[] encodeBaselineBegin(
-            long epoch,
-            byte[] snapshotUuid,
-            long snapshotSeq,
-            BlockPos minPos,
-            int sizeX, int sizeY, int sizeZ,
-            long stateHash,
-            int paletteRevision,
-            int totalChunks,
-            long totalEncodedBytes,
-            long totalDecodedBytes,
-            byte compressionMode,
-            byte paletteBitsPerBlock,
-            byte biomeBitsPerQuart,
-            String dimension,
-            List<String> blockPalette,
-            List<String> biomePalette
-    ) {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try {
-            DataOutputStream out = new DataOutputStream(baos);
-            baos.write(MAGIC);
-            baos.write(PROTOCOL_VERSION);
-            baos.write(OPCODE_BASELINE_BEGIN);
-
-            writeLongLE(out, epoch);
-            if (snapshotUuid != null && snapshotUuid.length >= 16) {
-                out.write(snapshotUuid, 0, 16);
-            } else {
-                out.write(new byte[16]);
-            }
-            writeLongLE(out, snapshotSeq);
-            writeIntLE(out, minPos != null ? minPos.getX() : 0);
-            writeIntLE(out, minPos != null ? minPos.getY() : 0);
-            writeIntLE(out, minPos != null ? minPos.getZ() : 0);
-            writeIntLE(out, sizeX);
-            writeIntLE(out, sizeY);
-            writeIntLE(out, sizeZ);
-            writeLongLE(out, stateHash);
-            writeIntLE(out, paletteRevision);
-            writeIntLE(out, totalChunks);
-            writeLongLE(out, totalEncodedBytes);
-            writeLongLE(out, totalDecodedBytes);
-            out.writeByte(compressionMode);
-            out.writeByte(paletteBitsPerBlock);
-            out.writeByte(biomeBitsPerQuart);
-            writeString(out, dimension);
-
-            writeIntLE(out, blockPalette.size());
-            for (String p : blockPalette) {
-                writeString(out, p);
-            }
-
-            writeShortLE(out, biomePalette.size());
-            for (String b : biomePalette) {
-                writeString(out, b);
-            }
-            out.flush();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return baos.toByteArray();
-    }
-
-    public static byte[] encodeBaselineChunk(
-            long epoch,
-            byte[] snapshotUuid,
-            int chunkIndex,
-            int totalChunks,
-            long firstVoxelIndex,
-            int voxelCount,
-            int decodedTargetBytes,
-            long chunkXxHash64,
-            byte[] payload
-    ) {
-        ByteBuffer buf = ByteBuffer.allocate(4 + 8 + 16 + 4 + 4 + 8 + 4 + 4 + 4 + 8 + payload.length);
-        buf.order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(MAGIC);
-        buf.put(PROTOCOL_VERSION);
-        buf.put(OPCODE_BASELINE_CHUNK);
-        buf.putLong(epoch);
-        if (snapshotUuid != null && snapshotUuid.length >= 16) {
-            buf.put(snapshotUuid, 0, 16);
-        } else {
-            buf.put(new byte[16]);
-        }
-        buf.putInt(chunkIndex);
-        buf.putInt(totalChunks);
-        buf.putLong(firstVoxelIndex);
-        buf.putInt(voxelCount);
-        buf.putInt(payload.length);
-        buf.putInt(decodedTargetBytes);
-        buf.putLong(chunkXxHash64);
-        buf.put(payload);
-        return buf.array();
-    }
-
-    public static byte[] encodeBaselineEnd(
-            long epoch,
-            byte[] snapshotUuid,
-            long snapshotSeq,
-            int totalChunksSent,
-            long finalStateHash,
-            byte status
-    ) {
-        ByteBuffer buf = ByteBuffer.allocate(4 + 8 + 16 + 8 + 4 + 8 + 1);
-        buf.order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(MAGIC);
-        buf.put(PROTOCOL_VERSION);
-        buf.put(OPCODE_BASELINE_END);
-        buf.putLong(epoch);
-        if (snapshotUuid != null && snapshotUuid.length >= 16) {
-            buf.put(snapshotUuid, 0, 16);
-        } else {
-            buf.put(new byte[16]);
-        }
-        buf.putLong(snapshotSeq);
-        buf.putInt(totalChunksSent);
-        buf.putLong(finalStateHash);
-        buf.put(status);
-        return buf.array();
-    }
-
-    public static byte[] encodeDeltaOp(
-            long epoch,
-            long seqId,
-            int paletteRevision,
-            List<DeltaEntry> entries
-    ) {
-        XXHash64 hasher = new XXHash64(0);
-        for (DeltaEntry e : entries) {
-            hasher.updateLE32(e.relX);
-            hasher.updateLE32(e.relY);
-            hasher.updateLE32(e.relZ);
-            hasher.updateLE16((short) e.stateId);
-        }
-        long batchXxHash64 = hasher.digest();
-
-        ByteBuffer buf = ByteBuffer.allocate(4 + 8 + 8 + 4 + 2 + 8 + entries.size() * (4 * 3 + 2));
-        buf.order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(MAGIC);
-        buf.put(PROTOCOL_VERSION);
-        buf.put(OPCODE_DELTA_OP);
-        buf.putLong(epoch);
-        buf.putLong(seqId);
-        buf.putInt(paletteRevision);
-        buf.putShort((short) entries.size());
-        buf.putLong(batchXxHash64);
-        for (DeltaEntry e : entries) {
-            buf.putInt(e.relX);
-            buf.putInt(e.relY);
-            buf.putInt(e.relZ);
-            buf.putShort((short) e.stateId);
-        }
-        return buf.array();
-    }
-
-    public static byte[] encodeBaselineEntities(
-            long epoch,
-            byte[] snapshotUuid,
-            List<EntityEntry> entities
-    ) {
-        int totalLen = 4 + 8 + 16 + 4;
-        if (entities != null) {
-            for (EntityEntry e : entities) {
-                totalLen += 4 + 4 + 4 + 4 + e.payload.length;
-            }
-        }
-        ByteBuffer buf = ByteBuffer.allocate(totalLen).order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(MAGIC);
-        buf.put(PROTOCOL_VERSION);
-        buf.put(OPCODE_BASELINE_ENTITIES);
-        buf.putLong(epoch);
-        if (snapshotUuid != null && snapshotUuid.length >= 16) {
-            buf.put(snapshotUuid, 0, 16);
-        } else {
-            buf.put(new byte[16]);
-        }
-        int count = entities != null ? entities.size() : 0;
-        buf.putInt(count);
-        if (entities != null) {
-            for (EntityEntry e : entities) {
-                buf.putInt(e.relX);
-                buf.putInt(e.relY);
-                buf.putInt(e.relZ);
-                buf.putInt(e.payload.length);
-                buf.put(e.payload);
-            }
-        }
-        return buf.array();
-    }
-
-    public static byte[] encodeDeltaEntity(
-            long epoch,
-            long seqId,
-            int relX,
-            int relY,
-            int relZ,
-            byte[] payload
-    ) {
-        int payloadLen = payload != null ? payload.length : 0;
-        ByteBuffer buf = ByteBuffer.allocate(4 + 8 + 8 + 4 + 4 + 4 + 4 + payloadLen).order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(MAGIC);
-        buf.put(PROTOCOL_VERSION);
-        buf.put(OPCODE_DELTA_ENTITY);
-        buf.putLong(epoch);
-        buf.putLong(seqId);
-        buf.putInt(relX);
-        buf.putInt(relY);
-        buf.putInt(relZ);
-        buf.putInt(payloadLen);
-        if (payloadLen > 0) {
-            buf.put(payload);
-        }
-        return buf.array();
-    }
-
     public static class BaselineVisualEntitiesPacket {
         public long epoch;
         public long snapshotSeq;
@@ -466,6 +212,23 @@ public class BlockDataEncoder {
                 buf.put(payload);
             }
         }
+    }
+
+    public static byte[] serializeVisualEntitiesList(List<VisualEntityEntry> entities) {
+        if (entities == null || entities.isEmpty()) {
+            return new byte[0];
+        }
+        int totalLen = 0;
+        for (VisualEntityEntry e : entities) {
+            byte[] idBytes = e.getId().getBytes(StandardCharsets.UTF_8);
+            byte[] payload = e.getCustomPayload();
+            totalLen += 16 + 24 + 12 + 12 + 1 + 2 + idBytes.length + 4 + (payload != null ? payload.length : 0);
+        }
+        ByteBuffer buf = ByteBuffer.allocate(totalLen).order(ByteOrder.LITTLE_ENDIAN);
+        for (VisualEntityEntry e : entities) {
+            writeVisualEntity(buf, e);
+        }
+        return buf.array();
     }
 
     public static VisualEntityEntry readVisualEntity(ByteBuffer buf) {
@@ -621,83 +384,6 @@ public class BlockDataEncoder {
         return pkt;
     }
 
-    public static byte[] encodePaletteUpdate(
-            long epoch,
-            long seqId,
-            int baseRevision,
-            int newRevision,
-            List<Map.Entry<Integer, String>> entries
-    ) {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try {
-            DataOutputStream out = new DataOutputStream(baos);
-            baos.write(MAGIC);
-            baos.write(PROTOCOL_VERSION);
-            baos.write(OPCODE_PALETTE_UPDATE);
-            writeLongLE(out, epoch);
-            writeLongLE(out, seqId);
-            writeIntLE(out, baseRevision);
-            writeIntLE(out, newRevision);
-            writeShortLE(out, entries.size());
-            for (Map.Entry<Integer, String> entry : entries) {
-                writeShortLE(out, entry.getKey());
-                writeString(out, entry.getValue());
-            }
-            out.flush();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return baos.toByteArray();
-    }
-
-    public static byte[] encodeError(long epoch, short errorCode, String message) {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try {
-            DataOutputStream out = new DataOutputStream(baos);
-            writeHeader(out, OPCODE_ERROR);
-            writeLongLE(out, epoch);
-            writeShortLE(out, errorCode);
-            writeString(out, message);
-            out.flush();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return baos.toByteArray();
-    }
-
-    /** RFC v3.1 CANCEL payload; a zero UUID cancels the current epoch. */
-    public static byte[] encodeCancel(long epoch, byte[] snapshotUuid, byte reason) {
-        ByteBuffer buf = ByteBuffer.allocate(4 + 8 + 16 + 1);
-        buf.order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(MAGIC);
-        buf.put(PROTOCOL_VERSION);
-        buf.put(OPCODE_CANCEL);
-        buf.putLong(epoch);
-        if (snapshotUuid != null && snapshotUuid.length >= 16) {
-            buf.put(snapshotUuid, 0, 16);
-        } else {
-            buf.put(new byte[16]);
-        }
-        buf.put(reason);
-        return buf.array();
-    }
-
-    public static byte[] encodePong(long timestamp) {
-        ByteBuffer buf = ByteBuffer.allocate(4 + 8);
-        buf.order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(MAGIC);
-        buf.put(PROTOCOL_VERSION);
-        buf.put(OPCODE_PONG);
-        buf.putLong(timestamp);
-        return buf.array();
-    }
-
-    private static void writeString(DataOutputStream out, String s) throws IOException {
-        byte[] bytes = (s != null ? s : "").getBytes(StandardCharsets.UTF_8);
-        writeShortLE(out, bytes.length);
-        out.write(bytes);
-    }
-
     private static String readString(ByteBuffer buf) {
         if (buf.remaining() < 2) return "";
         int len = buf.getShort() & 0xFFFF;
@@ -789,35 +475,6 @@ public class BlockDataEncoder {
         public String toString() {
             return "BlockChangeEntry[" + "pos=" + pos + ", " + "state=" + state + ']';
         }
-    }
-
-    private static void writeHeader(DataOutputStream out, byte packetType) throws IOException {
-        out.write(MAGIC);
-        out.writeByte(PROTOCOL_VERSION);
-        out.writeByte(packetType);
-    }
-
-    private static void writeLongLE(DataOutputStream out, long value) throws IOException {
-        out.writeByte((int) (value & 0xFF));
-        out.writeByte((int) ((value >> 8) & 0xFF));
-        out.writeByte((int) ((value >> 16) & 0xFF));
-        out.writeByte((int) ((value >> 24) & 0xFF));
-        out.writeByte((int) ((value >> 32) & 0xFF));
-        out.writeByte((int) ((value >> 40) & 0xFF));
-        out.writeByte((int) ((value >> 48) & 0xFF));
-        out.writeByte((int) ((value >> 56) & 0xFF));
-    }
-
-    private static void writeIntLE(DataOutputStream out, int value) throws IOException {
-        out.writeByte(value & 0xFF);
-        out.writeByte((value >> 8) & 0xFF);
-        out.writeByte((value >> 16) & 0xFF);
-        out.writeByte((value >> 24) & 0xFF);
-    }
-
-    private static void writeShortLE(DataOutputStream out, int value) throws IOException {
-        out.writeByte(value & 0xFF);
-        out.writeByte((value >> 8) & 0xFF);
     }
 }
 
