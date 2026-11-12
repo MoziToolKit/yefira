@@ -156,6 +156,23 @@ public class LevelCompat1204 implements ILevelCompat {
         return null;
     }
 
+    @Override
+    public String serializeEntityPayloadJson(net.minecraft.world.entity.Entity entity) {
+        if (entity instanceof net.minecraft.world.entity.decoration.Painting painting) {
+            String variant = painting.getVariant().unwrapKey()
+                    .map(k -> k.location().getPath())
+                    .orElse("kebab");
+            var val = painting.getVariant().value();
+            int w = val != null ? val.getWidth() / 16 : 1;
+            int h = val != null ? val.getHeight() / 16 : 1;
+            BlockPos anchor = painting.getPos();
+            return com.mozi1924.yefira.compat.visual.VisualEntitySerializer.serializePainting(
+                    variant, Math.max(1, w), Math.max(1, h), anchor.getX(), anchor.getY(), anchor.getZ()
+            );
+        }
+        return null;
+    }
+
     private static String getItemKey(net.minecraft.world.item.Item item) {
         if (item != null && item != net.minecraft.world.item.Items.AIR && item != net.minecraft.world.item.Items.BRICK) {
             return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item).toString();

@@ -32,6 +32,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import com.mozi1924.yefira.encoder.CanonicalVoxelScanner;
+import com.mozi1924.yefira.encoder.VisualEntityEntry;
+import com.mozi1924.yefira.encoder.VisualEntityScanner;
 import com.mozi1924.yefira.encoder.XXHash64;
 
 
@@ -64,6 +66,16 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
      * an explicit removal frame (payload = null) is broadcast to DCC clients.
      */
     private final Set<BlockPos> trackedEntityPositions = Collections.newSetFromMap(new ConcurrentHashMap<>());
+
+    /**
+     * Client-negotiated subscribed visual entity types.
+     */
+    private final Map<WebSocket, Set<String>> clientSubscribedEntities = new ConcurrentHashMap<>();
+
+    /**
+     * Active continuous visual entities currently tracked within the selection volume.
+     */
+    private final Map<UUID, VisualEntityEntry> trackedVisualEntities = new ConcurrentHashMap<>();
 
     // RFC v3.1 Session State
     private volatile byte[] serverUuidBytes = new byte[16];
@@ -477,6 +489,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         clientSendLocks.remove(conn);
         clientSnapshots.remove(conn);
         clientStreamEpochs.remove(conn);
+        clientSubscribedEntities.remove(conn);
     }
 
     /**
@@ -490,6 +503,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         // Any snapshot still awaiting ACK belongs to the cancelled stream.
         clientSnapshots.remove(conn);
         clientStreamEpochs.remove(conn);
+        clientSubscribedEntities.remove(conn);
     }
 
     private AtomicLong streamGenerationOf(WebSocket conn) {
@@ -864,6 +878,11 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             return;
         }
         activateClient(conn);
+        if (hello.subscribedVisualEntities != null && !hello.subscribedVisualEntities.isEmpty()) {
+            clientSubscribedEntities.put(conn, hello.subscribedVisualEntities);
+        } else {
+            clientSubscribedEntities.remove(conn);
+        }
 
         // Capture the session identity once so a concurrent restart cannot make
         // two reads in this handshake observe different epochs/UUIDs.
@@ -946,6 +965,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     public void onSelectionChanged(Level level, SelectionBox selection) {
         clearPendingDeltaChanges();
         cachedStateHash = 0;
+        trackedVisualEntities.clear();
         // Invalidate every scan/stream that is still working on the previous selection.
         selectionGeneration.incrementAndGet();
         if (clients.isEmpty()) return;
@@ -958,6 +978,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     public void onSelectionCleared() {
         clearPendingDeltaChanges();
         cachedStateHash = 0;
+        trackedVisualEntities.clear();
         selectionGeneration.incrementAndGet();
         for (WebSocket client : List.copyOf(clients)) {
             cancelClientStream(client);
@@ -1222,6 +1243,24 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                 if (!sendStreamFrame(conn, streamGen, selectionGen, streamEpoch, entitiesPkt)) return;
             }
 
+            // RFC v3.2 Continuous Visual Entities
+            Set<String> subscribed = clientSubscribedEntities.get(conn);
+            if (subscribed != null && !subscribed.isEmpty()) {
+                List<VisualEntityEntry> visualEntities = VisualEntityScanner.scanVisualEntities(level, selection, subscribed);
+                long entitiesHash = VisualEntityEntry.computeEntitiesHash(visualEntities);
+                byte[] visualPkt = BlockDataEncoder.encodeBaselineVisualEntities(
+                        epoch,
+                        snapshotSeq,
+                        entitiesHash,
+                        visualEntities
+                );
+                if (!sendStreamFrame(conn, streamGen, selectionGen, streamEpoch, visualPkt)) return;
+
+                for (VisualEntityEntry ve : visualEntities) {
+                    trackedVisualEntities.put(ve.getUuid(), ve);
+                }
+            }
+
             byte[] endPkt = BlockDataEncoder.encodeBaselineEnd(
                     epoch,
                     snapshotUuid,
@@ -1260,6 +1299,14 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             }
         }
         return true;
+    }
+
+    public void tickVisualEntities(long currentTick) {
+        if (currentTick % 5 != 0) return; // Tick every 5 ticks (250ms)
+        if (clients.isEmpty()) return;
+        SelectionManager sm = SelectionManager.getInstance();
+        if (!sm.hasSelection() || sm.getCurrentLevel() == null) return;
+        syncVisualEntities(sm.getCurrentLevel(), sm.getCurrentSelection());
     }
 
     public void tickValidationHeartbeat(long currentTick) {
@@ -1394,11 +1441,71 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                         }
                     }
                 }
+                Level currentLevel = SelectionManager.getInstance().getCurrentLevel();
+                syncVisualEntities(currentLevel, selection);
             }
             return true;
         } catch (Exception e) {
             Yefira.LOGGER.error("Error broadcasting delta update", e);
             return false;
+        }
+    }
+
+    /**
+     * Synchronizes visual entity changes within the selection box, broadcasting
+     * UPSERT and REMOVE frames to connected DCC clients.
+     */
+    public void syncVisualEntities(Level level, SelectionBox selection) {
+        if (clients.isEmpty() || selection == null || level == null) return;
+
+        Set<String> allSubscribed = new HashSet<>();
+        for (Set<String> sub : clientSubscribedEntities.values()) {
+            if (sub != null) {
+                allSubscribed.addAll(sub);
+            }
+        }
+        if (allSubscribed.isEmpty()) return;
+
+        List<VisualEntityEntry> currentEntities = VisualEntityScanner.scanVisualEntities(level, selection, allSubscribed);
+        Map<UUID, VisualEntityEntry> currentMap = new HashMap<>();
+        for (VisualEntityEntry e : currentEntities) {
+            currentMap.put(e.getUuid(), e);
+        }
+
+        // Detect additions and modifications
+        for (VisualEntityEntry curr : currentEntities) {
+            VisualEntityEntry prev = trackedVisualEntities.get(curr.getUuid());
+            if (prev == null || !Arrays.equals(prev.getCustomPayload(), curr.getCustomPayload())
+                    || prev.getX() != curr.getX() || prev.getY() != curr.getY() || prev.getZ() != curr.getZ()
+                    || prev.getYaw() != curr.getYaw() || prev.getPitch() != curr.getPitch()
+                    || prev.getFacing() != curr.getFacing()) {
+                long seqId = globalSeqId.incrementAndGet();
+                byte[] pkt = BlockDataEncoder.encodeDeltaVisualEntity(epoch, seqId, BlockDataEncoder.DELTA_VISUAL_ACTION_UPSERT, curr);
+                for (WebSocket client : List.copyOf(clients)) {
+                    Set<String> sub = clientSubscribedEntities.get(client);
+                    if (sub != null && sub.contains(curr.getId())) {
+                        sendSafe(client, pkt);
+                    }
+                }
+                trackedVisualEntities.put(curr.getUuid(), curr);
+            }
+        }
+
+        // Detect removals
+        Iterator<Map.Entry<UUID, VisualEntityEntry>> it = trackedVisualEntities.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<UUID, VisualEntityEntry> entry = it.next();
+            if (!currentMap.containsKey(entry.getKey())) {
+                long seqId = globalSeqId.incrementAndGet();
+                byte[] pkt = BlockDataEncoder.encodeDeltaVisualEntity(epoch, seqId, BlockDataEncoder.DELTA_VISUAL_ACTION_REMOVE, entry.getKey());
+                for (WebSocket client : List.copyOf(clients)) {
+                    Set<String> sub = clientSubscribedEntities.get(client);
+                    if (sub != null && sub.contains(entry.getValue().getId())) {
+                        sendSafe(client, pkt);
+                    }
+                }
+                it.remove();
+            }
         }
     }
 

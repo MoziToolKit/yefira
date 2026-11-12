@@ -29,6 +29,7 @@ public final class CommonServerHooks {
     public static void onServerTick(MinecraftServer server) {
         processCommandFile(server);
         WebSocketServerManager.getInstance().flushQueuedDeltaUpdates();
+        WebSocketServerManager.getInstance().tickVisualEntities(server.getTickCount());
         WebSocketServerManager.getInstance().tickValidationHeartbeat(server.getTickCount());
         GhostAnchorManager.tick(server);
     }

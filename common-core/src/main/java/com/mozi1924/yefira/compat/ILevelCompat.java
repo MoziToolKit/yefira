@@ -58,4 +58,11 @@ public interface ILevelCompat {
     default String serializeBlockEntityJson(net.minecraft.world.level.block.entity.BlockEntity be) {
         return null;
     }
+
+    /**
+     * Serializes a visual entity's custom payload to JSON string if supported, or returns null.
+     */
+    default String serializeEntityPayloadJson(net.minecraft.world.entity.Entity entity) {
+        return null;
+    }
 }

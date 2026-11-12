@@ -91,6 +91,25 @@ public class SelectionBox {
         );
     }
 
+    /**
+     * Converts this discrete selection box to a continuous Minecraft bounding box (AABB).
+     */
+    public net.minecraft.world.phys.AABB toAabb() {
+        return new net.minecraft.world.phys.AABB(
+            min.getX(), min.getY(), min.getZ(),
+            max.getX() + 1.0, max.getY() + 1.0, max.getZ() + 1.0
+        );
+    }
+
+    /**
+     * Checks if continuous 3D world coordinates fall within this selection box.
+     */
+    public boolean containsContinuous(double x, double y, double z) {
+        return x >= min.getX() && x <= (max.getX() + 1.0) &&
+               y >= min.getY() && y <= (max.getY() + 1.0) &&
+               z >= min.getZ() && z <= (max.getZ() + 1.0);
+    }
+
     public boolean isOversized() {
         com.mozi1924.yefira.config.YefiraConfig cfg = com.mozi1924.yefira.config.YefiraConfig.getInstance();
         return isOversized(cfg.getMaxVolumeSoftLimit(), cfg.getMaxSideSoftLimit());
