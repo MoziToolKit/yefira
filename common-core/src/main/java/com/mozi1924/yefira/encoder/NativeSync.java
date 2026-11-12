@@ -49,11 +49,18 @@ public final class NativeSync {
             }
         }
 
+        String osName = System.getProperty("os.name", "");
+        String osArch = System.getProperty("os.arch", "");
+        String platformDir = resolvePlatformDir(osName, osArch);
+        String libName = resolveLibName(osName);
+
         // 2. Local development workspace fallback
         String[] devPaths = new String[]{
-                "/Volumes/Data/code_projects/mtk/libmozitoolkit/target/release/libmtk_jni.dylib",
+                "../libmozitoolkit/target/release/" + libName,
+                "../../libmozitoolkit/target/release/" + libName,
+                "/Volumes/Data/code_projects/mtk/libmozitoolkit/target/release/" + libName,
                 "../libmozitoolkit/target/release/libmtk_jni.dylib",
-                "../../libmozitoolkit/target/release/libmtk_jni.dylib"
+                "/Volumes/Data/code_projects/mtk/libmozitoolkit/target/release/libmtk_jni.dylib"
         };
         for (String dp : devPaths) {
             File f = new File(dp);
@@ -69,32 +76,6 @@ public final class NativeSync {
         }
 
         // 3. Extract and load from bundled resources
-        String osName = System.getProperty("os.name", "").toLowerCase();
-        String osArch = System.getProperty("os.arch", "").toLowerCase();
-
-        String platformDir;
-        String libName;
-
-        if (osName.contains("win")) {
-            platformDir = "windows-x64";
-            libName = "mtk_jni.dll";
-        } else if (osName.contains("mac") || osName.contains("darwin")) {
-            if (osArch.contains("aarch64") || osArch.contains("arm64")) {
-                platformDir = "macos-arm64";
-            } else {
-                platformDir = "macos-x64";
-            }
-            libName = "libmtk_jni.dylib";
-        } else {
-            // Linux
-            if (osArch.contains("aarch64") || osArch.contains("arm64")) {
-                platformDir = "linux-arm64";
-            } else {
-                platformDir = "linux-x64";
-            }
-            libName = "libmtk_jni.so";
-        }
-
         String resourcePath = "/natives/" + platformDir + "/" + libName;
         try (InputStream in = NativeSync.class.getResourceAsStream(resourcePath)) {
             if (in != null) {
@@ -129,6 +110,31 @@ public final class NativeSync {
         } catch (Throwable t) {
             loadError = t;
             LOGGER.log(Level.SEVERE, "[NativeSync] Could not load mtk_jni native library for " + platformDir, t);
+        }
+    }
+
+    public static String resolvePlatformDir(String osName, String osArch) {
+        String os = osName != null ? osName.toLowerCase() : "";
+        String arch = osArch != null ? osArch.toLowerCase() : "";
+        boolean isArm = arch.contains("aarch64") || arch.contains("arm64");
+
+        if (os.contains("win")) {
+            return isArm ? "windows-arm64" : "windows-x64";
+        } else if (os.contains("mac") || os.contains("darwin")) {
+            return isArm ? "macos-arm64" : "macos-x64";
+        } else {
+            return isArm ? "linux-arm64" : "linux-x64";
+        }
+    }
+
+    public static String resolveLibName(String osName) {
+        String os = osName != null ? osName.toLowerCase() : "";
+        if (os.contains("win")) {
+            return "mtk_jni.dll";
+        } else if (os.contains("mac") || os.contains("darwin")) {
+            return "libmtk_jni.dylib";
+        } else {
+            return "libmtk_jni.so";
         }
     }
 

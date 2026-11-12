@@ -57,6 +57,10 @@ jobs:
             target: x86_64-pc-windows-msvc
             platform_dir: windows-x64
             artifact_file: mtk_jni.dll
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            platform_dir: windows-arm64
+            artifact_file: mtk_jni.dll
           - os: macos-latest
             target: aarch64-apple-darwin
             platform_dir: macos-arm64
@@ -92,7 +96,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p stage/${{ matrix.platform_dir }}
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          if [ "${{ matrix.os }}" = "windows-latest" ] || [ "${{ matrix.os }}" = "windows-11-arm" ]; then
             cp -v target/${{ matrix.target }}/release/mtk_jni.dll stage/${{ matrix.platform_dir }}/
           else
             cp -v target/${{ matrix.target }}/release/${{ matrix.artifact_file }} stage/${{ matrix.platform_dir }}/
@@ -156,9 +160,10 @@ jobs:
           test -f common-core/src/main/resources/natives/linux-x64/libmtk_jni.so
           test -f common-core/src/main/resources/natives/linux-arm64/libmtk_jni.so
           test -f common-core/src/main/resources/natives/windows-x64/mtk_jni.dll
+          test -f common-core/src/main/resources/natives/windows-arm64/mtk_jni.dll
           test -f common-core/src/main/resources/natives/macos-arm64/libmtk_jni.dylib
           test -f common-core/src/main/resources/natives/macos-x64/libmtk_jni.dylib
-          echo "All 5 native platform binaries successfully bundled!"
+          echo "All 6 native platform binaries successfully bundled!"
 
       - name: Validate loader metadata filenames
         run: |
@@ -326,7 +331,7 @@ jobs:
               "- **26.2** (Fabric / NeoForge)" \
               "" \
               "### Native Engine" \
-              "- Embedded **libmtk-jni** (Windows x64, macOS arm64/x64, Linux x64/arm64)" \
+              "- Embedded **libmtk-jni** (Windows x64/arm64, macOS arm64/x64, Linux x64/arm64)" \
               "" \
               "Built on $(date -u '+%Y-%m-%d %H:%M:%S UTC')." > /tmp/ci_release_notes.md
 

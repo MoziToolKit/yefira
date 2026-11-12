@@ -8,6 +8,27 @@ import static org.junit.jupiter.api.Assertions.*;
 public class NativeSyncTest {
 
     @Test
+    public void testPlatformDirResolution() {
+        // Windows
+        assertEquals("windows-x64", NativeSync.resolvePlatformDir("Windows 11", "amd64"));
+        assertEquals("windows-x64", NativeSync.resolvePlatformDir("Windows 10", "x86_64"));
+        assertEquals("windows-arm64", NativeSync.resolvePlatformDir("Windows 11", "aarch64"));
+        assertEquals("windows-arm64", NativeSync.resolvePlatformDir("Windows 11", "arm64"));
+        assertEquals("mtk_jni.dll", NativeSync.resolveLibName("Windows 11"));
+
+        // macOS
+        assertEquals("macos-arm64", NativeSync.resolvePlatformDir("Mac OS X", "aarch64"));
+        assertEquals("macos-arm64", NativeSync.resolvePlatformDir("macOS", "arm64"));
+        assertEquals("macos-x64", NativeSync.resolvePlatformDir("Mac OS X", "x86_64"));
+        assertEquals("libmtk_jni.dylib", NativeSync.resolveLibName("Mac OS X"));
+
+        // Linux
+        assertEquals("linux-arm64", NativeSync.resolvePlatformDir("Linux", "aarch64"));
+        assertEquals("linux-x64", NativeSync.resolvePlatformDir("Linux", "amd64"));
+        assertEquals("libmtk_jni.so", NativeSync.resolveLibName("Linux"));
+    }
+
+    @Test
     public void testNativeLibraryLoaded() {
         assertTrue(NativeSync.isAvailable(), "NativeSync library must be available and loaded: " + NativeSync.getLoadError());
     }
