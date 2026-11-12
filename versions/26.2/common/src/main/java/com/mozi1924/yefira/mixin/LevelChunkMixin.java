@@ -1,6 +1,6 @@
 package com.mozi1924.yefira.mixin;
 
-import com.mozi1924.yefira.encoder.BlockDataEncoder;
+import com.mozi1924.yefira.encoder.BlockChangeEntry;
 import com.mozi1924.yefira.network.WebSocketServerManager;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
@@ -35,7 +35,7 @@ public abstract class LevelChunkMixin {
                         this.level.dimension().equals(selectionManager.getDimension()) &&
                         selection.contains(pos)) {
 
-                        BlockDataEncoder.BlockChangeEntry change = new BlockDataEncoder.BlockChangeEntry(pos.immutable(), state);
+                        BlockChangeEntry change = new BlockChangeEntry(pos.immutable(), state);
                         WebSocketServerManager.getInstance().queueDeltaUpdate(selection, change);
                     }
                 }

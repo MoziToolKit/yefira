@@ -20,14 +20,25 @@ public class WebSocketIntegrationTest {
     private static final int TEST_PORT = 18765;
     private static final String TEST_HOST = "127.0.0.1";
 
+    // RFC v3.1 mock client wire constants
+    private static final byte[] MAGIC = new byte[]{(byte) 0x4D, (byte) 0x54};
+    private static final byte PROTOCOL_VERSION = 0x03;
+    private static final byte OPCODE_HELLO = 0x01;
+    private static final byte OPCODE_WELCOME = 0x02;
+    private static final byte OPCODE_PING = 0x0E;
+    private static final byte OPCODE_PONG = 0x0F;
+    private static final byte OPCODE_ERROR = 0x10;
+    private static final byte OPCODE_SYNC_CONFIG = (byte) 0x82;
+    private static final short ERROR_UNKNOWN_OPCODE = 0x0007;
+
     private static byte[] helloBytes(String token) {
         byte[] auth = token == null ? new byte[0] : token.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         byte[] dim = "minecraft:overworld".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         ByteBuffer buf = ByteBuffer.allocate(4 + 2 + 2 + 4 + 4 + 16 + 8 + 8 + 24 + 8 + 2 + auth.length + 2 + dim.length);
         buf.order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.MAGIC);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.PROTOCOL_VERSION);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.OPCODE_HELLO);
+        buf.put(MAGIC);
+        buf.put(PROTOCOL_VERSION);
+        buf.put(OPCODE_HELLO);
         buf.putShort((short) 3);
         buf.putShort((short) 3);
         buf.putInt(0);
@@ -47,9 +58,9 @@ public class WebSocketIntegrationTest {
     private static byte[] pingBytes(long timestamp) {
         ByteBuffer buf = ByteBuffer.allocate(4 + 8);
         buf.order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.MAGIC);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.PROTOCOL_VERSION);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.OPCODE_PING);
+        buf.put(MAGIC);
+        buf.put(PROTOCOL_VERSION);
+        buf.put(OPCODE_PING);
         buf.putLong(timestamp);
         return buf.array();
     }
@@ -145,9 +156,9 @@ public class WebSocketIntegrationTest {
                     byte ver = buf.get();
                     byte op = buf.get();
                     if (b0 == 'M' && b1 == 'T' && ver == 3) {
-                        if (op == com.mozi1924.yefira.encoder.BlockDataEncoder.OPCODE_ERROR) {
+                        if (op == OPCODE_ERROR) {
                             rejected.complete(true);
-                        } else if (op == com.mozi1924.yefira.encoder.BlockDataEncoder.OPCODE_WELCOME) {
+                        } else if (op == OPCODE_WELCOME) {
                             // Welcome decision check: header(4) + version(2) + uuid(16) + epoch(8) + seq(8) + min(12) + size(12) + hash(8)
                             if (buf.remaining() >= 66) {
                                 buf.position(buf.position() + 66);
@@ -294,7 +305,7 @@ public class WebSocketIntegrationTest {
                 byte b1 = bytes.get();
                 byte ver = bytes.get();
                 byte op = bytes.get();
-                if (b0 == 'M' && b1 == 'T' && ver == 3 && op == com.mozi1924.yefira.encoder.BlockDataEncoder.OPCODE_PONG) {
+                if (b0 == 'M' && b1 == 'T' && ver == 3 && op == OPCODE_PONG) {
                     pongFuture.complete(bytes.getLong());
                 }
             }
@@ -323,9 +334,9 @@ public class WebSocketIntegrationTest {
         client.sendPing();
         Thread.sleep(100);
 
-        // Test safe send with null handles gracefully
-        boolean sent = server.sendSafe(null, new byte[4]);
-        Assertions.assertTrue(sent); // nativeServerBroadcastDelta handles valid bytes
+        // Test safe send gracefully
+        boolean sent = server.sendSafe(new byte[4]);
+        Assertions.assertTrue(sent); // nativeServerBroadcastPacket handles valid bytes
         server.broadcastBaseline(null, null); // should safely no-op without crash
 
         // Abrupt close
@@ -348,7 +359,7 @@ public class WebSocketIntegrationTest {
                 byte b1 = bytes.get();
                 byte ver = bytes.get();
                 byte op = bytes.get();
-                if (b0 == 'M' && b1 == 'T' && ver == 3 && op == com.mozi1924.yefira.encoder.BlockDataEncoder.OPCODE_ERROR) {
+                if (b0 == 'M' && b1 == 'T' && ver == 3 && op == OPCODE_ERROR) {
                     bytes.getLong(); // skip epoch
                     errorCodeFuture.complete(bytes.getShort());
                 }
@@ -359,13 +370,13 @@ public class WebSocketIntegrationTest {
         // Send unknown opcode 0x99
         ByteBuffer buf = ByteBuffer.allocate(4);
         buf.order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.MAGIC);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.PROTOCOL_VERSION);
+        buf.put(MAGIC);
+        buf.put(PROTOCOL_VERSION);
         buf.put((byte) 0x99);
         client.send(buf.array());
 
         short err = errorCodeFuture.get(5, TimeUnit.SECONDS);
-        Assertions.assertEquals(com.mozi1924.yefira.encoder.BlockDataEncoder.ERROR_UNKNOWN_OPCODE, err);
+        Assertions.assertEquals(ERROR_UNKNOWN_OPCODE, err);
         client.close();
     }
 
@@ -377,9 +388,9 @@ public class WebSocketIntegrationTest {
         // Send SYNC_CONFIG without HELLO
         ByteBuffer buf = ByteBuffer.allocate(4 + 3);
         buf.order(ByteOrder.LITTLE_ENDIAN);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.MAGIC);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.PROTOCOL_VERSION);
-        buf.put(com.mozi1924.yefira.encoder.BlockDataEncoder.OPCODE_SYNC_CONFIG);
+        buf.put(MAGIC);
+        buf.put(PROTOCOL_VERSION);
+        buf.put(OPCODE_SYNC_CONFIG);
         buf.put((byte) 2); // throttleMode
         buf.put((byte) 30); // fps
         buf.put((byte) 1); // active

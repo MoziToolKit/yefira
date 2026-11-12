@@ -30,7 +30,6 @@ public final class CommonServerHooks {
         processCommandFile(server);
         WebSocketServerManager.getInstance().flushQueuedDeltaUpdates();
         WebSocketServerManager.getInstance().tickVisualEntities(server.getTickCount());
-        WebSocketServerManager.getInstance().tickValidationHeartbeat(server.getTickCount());
         GhostAnchorManager.tick(server);
     }
 

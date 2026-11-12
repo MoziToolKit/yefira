@@ -49,7 +49,7 @@ public class CanonicalVoxelScanner {
         public final List<String> biomePalette;
         public final int[] biomeIndices;
         public final long stateHash;
-        public final List<BlockDataEncoder.EntityEntry> entities;
+        public final List<EntityEntry> entities;
 
         public BaselineScanResult(
                 BlockPos minPos,
@@ -61,7 +61,7 @@ public class CanonicalVoxelScanner {
                 List<String> biomePalette,
                 int[] biomeIndices,
                 long stateHash,
-                List<BlockDataEncoder.EntityEntry> entities
+                List<EntityEntry> entities
         ) {
             this.minPos = minPos;
             this.sizeX = sizeX;
@@ -133,7 +133,7 @@ public class CanonicalVoxelScanner {
         if (cached != null) {
             return cached;
         }
-        String serialized = BlockDataEncoder.serializeBlockState(state);
+        String serialized = BlockStateSerializer.serializeBlockState(state);
         byte[] bytes = serialized.getBytes(StandardCharsets.UTF_8);
         cached = new CanonicalBlock(serialized, bytes);
         CANONICAL_CACHE.put(state, cached);
@@ -145,18 +145,6 @@ public class CanonicalVoxelScanner {
      */
     public static String normalizeCanonicalBlockState(BlockState state) {
         return getCanonicalBlock(state).string;
-    }
-
-    /**
-     * Computes the authoritative canonical state_hash across the 3D bounding volume.
-     * Traversal strictly adheres to RFC Section 3.1:
-     * - X is fastest-varying axis
-     * - Z is next-fastest axis
-     * - Y is slowest-varying axis (bottom-up scanning of horizontal slices)
-     */
-    public static long computeCanonicalStateHash(Level level, SelectionBox box, String dimension) {
-        BaselineScanResult result = scanBaseline(level, box, dimension);
-        return result != null ? result.stateHash : 0L;
     }
 
     /**
@@ -248,7 +236,7 @@ public class CanonicalVoxelScanner {
         }
 
         // Pre-fetch block entities across selection bounding box for sparse verification
-        List<BlockDataEncoder.EntityEntry> entities = new ArrayList<>();
+        List<EntityEntry> entities = new ArrayList<>();
         try {
             com.mozi1924.yefira.compat.ILevelCompat levelCompat = com.mozi1924.yefira.compat.VersionCompat.level();
             for (int cz = 0; cz < chunksD; cz++) {
@@ -263,7 +251,7 @@ public class CanonicalVoxelScanner {
                                 int rx = p.getX() - minX;
                                 int ry = p.getY() - minY;
                                 int relZ = p.getZ() - minZ;
-                                entities.add(new BlockDataEncoder.EntityEntry(rx, ry, relZ, json));
+                                entities.add(new EntityEntry(rx, ry, relZ, json));
                             }
                         }
                     }

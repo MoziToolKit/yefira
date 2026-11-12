@@ -3,8 +3,6 @@ package com.mozi1924.yefira.encoder;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -109,65 +107,50 @@ public class VisualEntityEntry {
     }
 
     /**
-     * Computes a deterministic 64-bit xxHash (xxHash64) over a list of visual entities.
-     * Guarantees identical output across Java, Rust, and Python by:
-     * 1. Sorting entities strictly by canonical UUID string comparison.
-     * 2. Hashing primitive raw binary bits (IEEE 754) in Little-Endian byte order without lossy string conversion.
+     * Serializes a list of VisualEntityEntry objects into contiguous Little-Endian binary bytes
+     * for JNI ingestion by mtk-sync.
      */
-    public static long computeEntitiesHash(List<VisualEntityEntry> entities) {
+    public static byte[] serializeList(List<VisualEntityEntry> entities) {
         if (entities == null || entities.isEmpty()) {
-            return 0L;
+            return new byte[0];
         }
-
-        List<VisualEntityEntry> sorted = new ArrayList<>(entities);
-        sorted.sort(Comparator.comparing(e -> e.getUuid().toString()));
-
         int totalLen = 0;
-        for (VisualEntityEntry e : sorted) {
+        for (VisualEntityEntry e : entities) {
             byte[] idBytes = e.getId().getBytes(StandardCharsets.UTF_8);
             byte[] payload = e.getCustomPayload();
-            totalLen += 71 + idBytes.length + (payload != null ? payload.length : 0);
+            totalLen += 16 + 24 + 12 + 12 + 1 + 2 + idBytes.length + 4 + (payload != null ? payload.length : 0);
         }
-
         ByteBuffer buf = ByteBuffer.allocate(totalLen).order(ByteOrder.LITTLE_ENDIAN);
-        for (VisualEntityEntry e : sorted) {
-            // 1. UUID: most_sig LE, least_sig LE (16 bytes)
-            buf.putLong(e.getUuid().getMostSignificantBits());
-            buf.putLong(e.getUuid().getLeastSignificantBits());
+        for (VisualEntityEntry e : entities) {
+            writeToBuffer(buf, e);
+        }
+        return buf.array();
+    }
 
-            // 2. Entity Type ID (uint16 length + UTF-8 bytes)
+    private static void writeToBuffer(ByteBuffer buf, VisualEntityEntry e) {
+        UUID u = e != null ? e.getUuid() : new UUID(0L, 0L);
+        buf.putLong(u.getMostSignificantBits());
+        buf.putLong(u.getLeastSignificantBits());
+        if (e != null) {
+            buf.putDouble(e.getX());
+            buf.putDouble(e.getY());
+            buf.putDouble(e.getZ());
+            buf.putFloat(e.getPitch());
+            buf.putFloat(e.getYaw());
+            buf.putFloat(e.getRoll());
+            buf.putFloat(e.getScaleX());
+            buf.putFloat(e.getScaleY());
+            buf.putFloat(e.getScaleZ());
+            buf.put(e.getFacing());
             byte[] idBytes = e.getId().getBytes(StandardCharsets.UTF_8);
             buf.putShort((short) idBytes.length);
             buf.put(idBytes);
-
-            // 3. Position (3 x 8 bytes IEEE 754 double LE)
-            buf.putLong(Double.doubleToRawLongBits(e.getX()));
-            buf.putLong(Double.doubleToRawLongBits(e.getY()));
-            buf.putLong(Double.doubleToRawLongBits(e.getZ()));
-
-            // 4. Rotation (3 x 4 bytes IEEE 754 float LE)
-            buf.putInt(Float.floatToRawIntBits(e.getPitch()));
-            buf.putInt(Float.floatToRawIntBits(e.getYaw()));
-            buf.putInt(Float.floatToRawIntBits(e.getRoll()));
-
-            // 5. Scale (3 x 4 bytes IEEE 754 float LE)
-            buf.putInt(Float.floatToRawIntBits(e.getScaleX()));
-            buf.putInt(Float.floatToRawIntBits(e.getScaleY()));
-            buf.putInt(Float.floatToRawIntBits(e.getScaleZ()));
-
-            // 6. Facing (1 byte)
-            buf.put(e.getFacing());
-
-            // 7. Custom Payload (uint32 length + UTF-8 JSON bytes)
             byte[] payload = e.getCustomPayload();
-            if (payload != null && payload.length > 0) {
-                buf.putInt(payload.length);
+            buf.putInt(payload.length);
+            if (payload.length > 0) {
                 buf.put(payload);
-            } else {
-                buf.putInt(0);
             }
         }
-        return NativeSync.nativeXxHash64(buf.array(), 0L);
     }
 
     @Override

@@ -5,8 +5,9 @@ import com.mozi1924.yefira.compat.ClientThread;
 import com.mozi1924.yefira.compat.ServerThread;
 import com.mozi1924.yefira.compat.VersionCompat;
 import com.mozi1924.yefira.config.YefiraConfig;
-import com.mozi1924.yefira.encoder.BlockDataEncoder;
+import com.mozi1924.yefira.encoder.BlockChangeEntry;
 import com.mozi1924.yefira.encoder.CanonicalVoxelScanner;
+import com.mozi1924.yefira.encoder.EntityEntry;
 import com.mozi1924.yefira.encoder.NativeSync;
 import com.mozi1924.yefira.encoder.VisualEntityEntry;
 import com.mozi1924.yefira.encoder.VisualEntityScanner;
@@ -20,7 +21,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * Slimmed-down WebSocket Server Manager backed by high-performance native Rust core (mtk-sync & mtk-jni).
+ * Slimmed-down WebSocket Server Manager backed by high-performance native Rust core (mtk-sync and mtk-jni).
  * <p>
  * Handles Minecraft selection lifecycle, block change delta queuing, and voxel scanning,
  * while delegating all WebSocket network I/O, RFC v3.1 framing, dynamic palettes,
@@ -41,7 +42,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     private volatile Thread eventPollerThread;
     private volatile ExecutorService streamingExecutor = createStreamingExecutor();
 
-    private final Map<BlockPos, BlockDataEncoder.BlockChangeEntry> pendingDeltaChanges = new LinkedHashMap<>();
+    private final Map<BlockPos, BlockChangeEntry> pendingDeltaChanges = new LinkedHashMap<>();
     private SelectionBox pendingDeltaSelection;
     private final Set<BlockPos> trackedEntityPositions = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Map<UUID, VisualEntityEntry> trackedVisualEntities = new ConcurrentHashMap<>();
@@ -304,16 +305,16 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                     trackedVisualEntities.put(ve.getUuid(), ve);
                 }
             }
-            byte[] visualEntitiesBytes = BlockDataEncoder.serializeVisualEntitiesList(visualEntities);
+            byte[] visualEntitiesBytes = VisualEntityEntry.serializeList(visualEntities);
 
             int numEntities = scan.entities != null ? scan.entities.size() : 0;
             int[] entityCoords = new int[numEntities * 3];
             String[] entityJsons = new String[numEntities];
             for (int i = 0; i < numEntities; i++) {
-                BlockDataEncoder.EntityEntry ee = scan.entities.get(i);
-                entityCoords[i * 3] = ee.relX;
-                entityCoords[i * 3 + 1] = ee.relY;
-                entityCoords[i * 3 + 2] = ee.relZ;
+                EntityEntry ee = scan.entities.get(i);
+                entityCoords[i * 3] = ee.relX();
+                entityCoords[i * 3 + 1] = ee.relY();
+                entityCoords[i * 3 + 2] = ee.relZ();
                 entityJsons[i] = ee.getJson();
             }
 
@@ -336,7 +337,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         }
     }
 
-    public void queueDeltaUpdate(SelectionBox selection, BlockDataEncoder.BlockChangeEntry change) {
+    public void queueDeltaUpdate(SelectionBox selection, BlockChangeEntry change) {
         if (serverHandle == 0 || !isRunning() || getConnectedCount() == 0) return;
         synchronized (pendingDeltaChanges) {
             if (pendingDeltaSelection != null && !sameBounds(pendingDeltaSelection, selection)) {
@@ -352,7 +353,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
 
     public void flushQueuedDeltaUpdates() {
         if (serverHandle == 0 || !isRunning() || getConnectedCount() == 0) return;
-        List<BlockDataEncoder.BlockChangeEntry> changes;
+        List<BlockChangeEntry> changes;
         SelectionBox selection;
         synchronized (pendingDeltaChanges) {
             if (pendingDeltaChanges.isEmpty() || pendingDeltaSelection == null) return;
@@ -364,7 +365,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         broadcastDeltaUpdate(selection, changes);
     }
 
-    public boolean broadcastDeltaUpdate(SelectionBox selection, List<BlockDataEncoder.BlockChangeEntry> changes) {
+    public boolean broadcastDeltaUpdate(SelectionBox selection, List<BlockChangeEntry> changes) {
         if (serverHandle == 0 || !isRunning() || getConnectedCount() == 0 || changes == null || changes.isEmpty()) {
             return true;
         }
@@ -375,7 +376,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             String[] stateStrings = new String[numChanges];
 
             for (int i = 0; i < numChanges; i++) {
-                BlockDataEncoder.BlockChangeEntry c = changes.get(i);
+                BlockChangeEntry c = changes.get(i);
                 relCoords[i * 3] = c.pos().getX() - min.getX();
                 relCoords[i * 3 + 1] = c.pos().getY() - min.getY();
                 relCoords[i * 3 + 2] = c.pos().getZ() - min.getZ();
@@ -387,7 +388,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             List<String> entityJsonsList = new ArrayList<>();
 
             if (currentLevel != null) {
-                for (BlockDataEncoder.BlockChangeEntry c : changes) {
+                for (BlockChangeEntry c : changes) {
                     int rx = c.pos().getX() - min.getX();
                     int ry = c.pos().getY() - min.getY();
                     int rz = c.pos().getZ() - min.getZ();
@@ -432,7 +433,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         }
     }
 
-    public boolean sendSafe(Object ignoredConn, byte[] data) {
+    public boolean sendSafe(byte[] data) {
         if (serverHandle != 0 && isRunning() && data != null && data.length > 0) {
             NativeSync.nativeServerBroadcastPacket(serverHandle, data);
             return true;
@@ -447,8 +448,6 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         if (!sm.hasSelection() || sm.getCurrentLevel() == null) return;
         syncVisualEntities(sm.getCurrentLevel(), sm.getCurrentSelection());
     }
-
-    public void tickValidationHeartbeat(long currentTick) {}
 
     public void syncVisualEntities(Level level, SelectionBox selection) {
         if (serverHandle == 0 || !isRunning() || getConnectedCount() == 0 || selection == null || level == null) {
