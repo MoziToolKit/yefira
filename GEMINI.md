@@ -11,9 +11,9 @@
 ### 多工作区协同拓扑 (Three-Pillar Architecture)
 | 工作区路径 | 角色 | 职责边界 |
 | :--- | :--- | :--- |
-| **`../yefira`** | **实时协同服务端模组 (当前工作区)** | 负责 Minecraft 服务端权威 3D 体素扫描 (`CanonicalVoxelScanner`)、XXHash64 校验码生成、增量分片推送、选区管理与 WebSocketServer 通信（支持 1.20.1 ~ 26.2 多版本）。 |
-| **`../libmozitoolkit`** | **Rust 核心引擎 (`libmtk`)** | 消费 Yefira 推送的 Protocol v3 二进制帧，负责握手裁决、状态机维护、增量网格化 (`DeltaMesher`) 与双通道图集重映射。 |
-| **`../MoziToolKit`** | **DCC 插件前端 (Blender Addon)** | 提供 3D 视图交互面板、点云伴生网格装配、选区射线交互与操作符事件响应。 |
+| **`../yefira`** | **实时协同服务端模组 (当前工作区)** | 负责 Minecraft 服务端权威 3D 体素扫描 (`CanonicalVoxelScanner`)、连续视觉实体扫描 (`VisualEntityScanner`)、选区管理与游戏事件桥接；通过 `NativeSync` (JNI) 驱动 Rust 原生 `LiveSyncServer` 进行 WebSocket 通信、xxHash64 校验码计算与基线/增量流式推送（支持 1.20.1 ~ 26.2 多版本）。 |
+| **`../libmozitoolkit`** | **Rust 核心引擎 (`libmtk`)** | 通过 `mtk-jni` 与 `mtk-sync` 为 Yefira 提供原生服务端核心 (`LiveSyncServer`)、握手决策 (`decide_handshake`) 与协议编解码；为 MoziToolKit 提供增量网格化 (`DeltaMesher`) 与双通道图集重映射。 |
+| **`../MoziToolKit`** | **DCC 插件前端 (Blender Addon)** | 提供 3D 视图交互面板、伴生点云网格装配、选区射线交互与操作符事件响应。 |
 
 ---
 
@@ -21,18 +21,21 @@
 
 ### 规则 1：服务端权威原则 (Server-Authoritative Sync)
 - 世界体素状态、选区边界（SelectionBox）有效性、区块加载状态与变化检测**以 Minecraft 服务端为唯一事实源**。
-- 采用 `CanonicalVoxelScanner` 与 `XXHash64` 进行 3D 空间扫描与哈希指纹计算，确保客户端与服务端的体素状态具备自愈校验能力。
+- 采用 `CanonicalVoxelScanner`、`VisualEntityScanner` 与 `NativeSync`（调用 Rust 原生 `xxHash64`）进行 3D 空间扫描与哈希指纹计算，确保客户端与服务端的体素及实体状态具备自愈校验能力。
 
-### 规则 2：协议对齐原则 (RFC v3.1 Compliance)
-- 所有 WebSocket 帧调度、握手流程（`HELLO` / `MANIFEST`）、二进制体素增量、选区同步必须严格对齐 **[RFC v3.1: MTK 2.0 Live Sync 协议与架构设计规范](../MoziToolKit/docs/live_sync/live_sync_protocol.md)**。
+### 规则 2：协议对齐原则 (RFC v3.1 & v3.2 Compliance)
+- 所有 WebSocket 帧调度、握手流程（`HELLO` / `WELCOME`）、二进制体素增量、选区同步与连续视觉实体（Painting, ItemFrame）必须严格对齐 **[RFC v3.1 / v3.2: MTK 2.0 Live Sync 协议与架构设计规范](../MoziToolKit/docs/live_sync/live_sync_protocol.md)**。
 - 严禁在未同步更新 RFC 规范及各端实现的情况下擅自变动数据包格式与操作码。
 
 ### 规则 3：跨版本解耦与架构分代隔离 (Multi-Version Separation)
-- **纯核心层共享**：`common-core` 必须保持无具体版本依赖，所有通用通信协议（`network/`）、选区几何数学（`selection/`）、配置项（`config/`）与编码器（`encoder/`）均在此实现。
+- **纯核心层共享**：`common-core` 必须保持无具体版本依赖，所有通用通信管理（`network/`）、选区几何数学（`selection/`）、配置项（`config/`）、Native JNI 桥接与状态序列化（`encoder/`）均在此实现。
 - **分代兼容隔离**：所有针对具体 Minecraft 版本的 API 适配（如 `LevelChunkMixin`、渲染接口、按键输入）必须严格收敛在对应 `versions/` 子工程中：
   - `versions/1.20.1` (Java 17, Fabric & Forge)
   - `versions/1.20.4` (Java 17, Fabric & NeoForge)
   - `versions/1.21.1` (Java 21, Fabric & NeoForge)
+  - `versions/1.21.4` (Java 21, Fabric & NeoForge)
+  - `versions/26.2` (Java 25, Fabric & NeoForge)
+- 严禁在 `common-core` 中引入任何特定版本的混淆名（Mojang / Yarn / Intermediary）或硬依赖。
   - `versions/1.21.4` (Java 21, Fabric & NeoForge)
   - `versions/26.2` (Java 25, Fabric & NeoForge)
 - 严禁在 `common-core` 中引入任何特定版本的混淆名（Mojang / Yarn / Intermediary）或硬依赖。
@@ -60,11 +63,11 @@
 ```
 yefira/
 ├── common-core/                        # 跨版本共享纯逻辑核心
-│   ├── network/                        # WebSocketServerManager 通信管理与帧调度
+│   ├── network/                        # WebSocketServerManager 通信管理与 Native 句柄生命周期
 │   ├── selection/                      # SelectionBox 选区数学几何与原子状态
 │   ├── config/                         # YefiraConfig 统一配置与 Token 鉴权
-│   ├── encoder/                        # 权威调色板压缩与 DTO 序列化
-│   └── compat/                         # 跨版本通用抽象契约
+│   ├── encoder/                        # NativeSync JNI 桥接、BlockStateSerializer 与 Voxel/Entity 扫描器
+│   └── compat/                         # 跨版本通用抽象契约与视觉实体序列化
 ├── versions/                           # 针对具体 MC 版本的加载器绑定
 │   ├── 1.20.1/                         # Fabric & Forge
 │   ├── 1.20.4/                         # Fabric & NeoForge
@@ -79,5 +82,6 @@ yefira/
 ## 4. 相关文档与协议索引
 
 - **协议权威规范**：[`../MoziToolKit/docs/live_sync/live_sync_protocol.md`](../MoziToolKit/docs/live_sync/live_sync_protocol.md)
-- **Rust 客户端实现**：[`../libmozitoolkit/crates/mtk-sync/`](../libmozitoolkit/crates/mtk-sync/)
+- **Rust 核心与服务端实现**：[`../libmozitoolkit/crates/mtk-sync/`](../libmozitoolkit/crates/mtk-sync/)
+- **JNI 模组原生绑定**：[`../libmozitoolkit/bindings/mtk-jni/`](../libmozitoolkit/bindings/mtk-jni/)
 - **Blender 操作符**：[`../MoziToolKit/operators/sync/`](../MoziToolKit/operators/sync/)
