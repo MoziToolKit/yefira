@@ -163,8 +163,11 @@ public class LevelCompat120 implements ILevelCompat {
                     .map(k -> k.location().getPath())
                     .orElse("kebab");
             var val = painting.getVariant().value();
-            int w = val != null ? val.getWidth() / 16 : 1;
-            int h = val != null ? val.getHeight() / 16 : 1;
+            // PaintingVariant dimensions are expressed in blocks on 1.20.x and in
+            // pixels on newer mappings; normalize defensively so a 4x4 painting is not
+            // squashed to 1x1 by an unconditional /16.
+            int w = val != null ? (val.getWidth() >= 16 ? val.getWidth() / 16 : val.getWidth()) : 1;
+            int h = val != null ? (val.getHeight() >= 16 ? val.getHeight() / 16 : val.getHeight()) : 1;
             BlockPos anchor = painting.getPos();
             return com.mozi1924.yefira.compat.visual.VisualEntitySerializer.serializePainting(
                     variant, Math.max(1, w), Math.max(1, h), anchor.getX(), anchor.getY(), anchor.getZ()

@@ -183,8 +183,37 @@ public final class VisualBlockEntity {
         }
     }
 
-    private static String escape(String s) {
+    /**
+     * Minimal JSON string escaper shared with {@link VisualEntitySerializer}: quotes,
+     * backslashes and control characters are escaped so a datapack-provided identifier can
+     * never produce invalid JSON. Lone surrogates are replaced with U+FFFD.
+     */
+    static String escape(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        StringBuilder out = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> out.append("\\\"");
+                case '\\' -> out.append("\\\\");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        out.append(String.format("\\u%04x", (int) c));
+                    } else if (Character.isHighSurrogate(c)
+                            && i + 1 < s.length()
+                            && Character.isLowSurrogate(s.charAt(i + 1))) {
+                        out.append(c).append(s.charAt(++i));
+                    } else if (Character.isSurrogate(c)) {
+                        out.append('\ufffd');
+                    } else {
+                        out.append(c);
+                    }
+                }
+            }
+        }
+        return out.toString();
     }
 }

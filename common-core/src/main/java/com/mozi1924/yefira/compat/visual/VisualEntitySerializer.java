@@ -21,9 +21,21 @@ public final class VisualEntitySerializer {
 
     /**
      * Serializes an Item Frame payload matching Rust ItemFrameData.
+     *
+     * @param mapId            Filled-map id, or null when the held item is not a map.
+     * @param blockEntityJson  Canonical `block_entity` JSON value (decorated pot / banner /
+     *                         skull) produced by {@link VisualBlockEntity}, or null.
      */
-    public static String serializeItemFrame(String itemId, int count, int rotation, boolean isGlowing, boolean isInvisible, Integer mapId) {
-        StringBuilder sb = new StringBuilder(128);
+    public static String serializeItemFrame(
+            String itemId,
+            int count,
+            int rotation,
+            boolean isGlowing,
+            boolean isInvisible,
+            Integer mapId,
+            String blockEntityJson
+    ) {
+        StringBuilder sb = new StringBuilder(192);
         sb.append("{\"type\":\"minecraft:item_frame\"");
         sb.append(",\"item_id\":\"").append(escape(itemId != null ? itemId : "")).append("\"");
         sb.append(",\"count\":").append(Math.max(1, count));
@@ -32,6 +44,9 @@ public final class VisualEntitySerializer {
         sb.append(",\"is_invisible\":").append(isInvisible);
         if (mapId != null) {
             sb.append(",\"map_id\":").append(mapId);
+        }
+        if (blockEntityJson != null && !blockEntityJson.isEmpty()) {
+            sb.append(",\"components\":{\"block_entity\":").append(blockEntityJson).append("}");
         }
         sb.append("}");
         return sb.toString();
@@ -57,8 +72,38 @@ public final class VisualEntitySerializer {
         return "{\"type\":\"generic\",\"custom_id\":\"" + escape(customId != null ? customId : "generic") + "\"}";
     }
 
-    private static String escape(String s) {
+    /**
+     * Minimal JSON string escaper. Escapes quotes, backslashes and every control
+     * character (including newlines and tabs) so that arbitrary datapack/mod identifiers
+     * can never produce invalid JSON. Lone surrogates are replaced with U+FFFD because
+     * they are not representable in UTF-8 and would make the payload undecodable.
+     */
+    static String escape(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        StringBuilder out = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> out.append("\\\"");
+                case '\\' -> out.append("\\\\");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        out.append(String.format("\\u%04x", (int) c));
+                    } else if (Character.isHighSurrogate(c)
+                            && i + 1 < s.length()
+                            && Character.isLowSurrogate(s.charAt(i + 1))) {
+                        out.append(c).append(s.charAt(++i));
+                    } else if (Character.isSurrogate(c)) {
+                        out.append('\ufffd');
+                    } else {
+                        out.append(c);
+                    }
+                }
+            }
+        }
+        return out.toString();
     }
 }

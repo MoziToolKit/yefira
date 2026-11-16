@@ -6,6 +6,7 @@ import com.mozi1924.yefira.selection.SelectionBox;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.GlowItemFrame;
 import net.minecraft.world.entity.decoration.HangingEntity;
 import net.minecraft.world.entity.decoration.ItemFrame;
@@ -24,6 +25,20 @@ import java.util.Set;
  * Decoupled from Discrete Voxel Blocks and Block Entities.
  */
 public class VisualEntityScanner {
+
+    /**
+     * Wraps an angle in radians into the canonical `(-PI, PI]` range used by
+     * `EntityInstance::rotation` (matches `mtk_save`'s normalization loop).
+     */
+    private static double wrapToPi(double radians) {
+        double wrapped = radians % (Math.PI * 2.0);
+        if (wrapped > Math.PI) {
+            wrapped -= Math.PI * 2.0;
+        } else if (wrapped <= -Math.PI) {
+            wrapped += Math.PI * 2.0;
+        }
+        return wrapped;
+    }
 
     private VisualEntityScanner() {}
 
@@ -117,9 +132,12 @@ public class VisualEntityScanner {
             return null;
         }
 
-        // Canonical Euler rotation in radians (pitch, yaw, roll)
-        float pitch = (float) Math.toRadians(entity.getXRot());
-        float yaw = (float) Math.toRadians(entity.getYRot());
+        // Canonical Euler rotation in radians (pitch, yaw, roll) matching
+        // `mtk_save::EntityParser::mc_rotation_to_model_euler`: Minecraft yaw 0 points
+        // South while canonical model yaw 0 points North, and positive Minecraft pitch
+        // looks down so the model-space X rotation is negated.
+        float pitch = (float) -Math.toRadians(entity.getXRot());
+        float yaw = (float) wrapToPi(Math.PI - Math.toRadians(entity.getYRot()));
         float roll = 0.0f;
 
         // Scale defaults to (1, 1, 1)
@@ -134,22 +152,34 @@ public class VisualEntityScanner {
 
         // Custom Payload Extraction
         byte[] payloadBytes = null;
+        com.mozi1924.yefira.compat.ILevelCompat levelCompat = VersionCompat.level();
         // 1. Check version-specific compat override first (e.g. Painting)
-        String compatPayload = VersionCompat.level().serializeEntityPayloadJson(entity);
+        String compatPayload = levelCompat.serializeEntityPayloadJson(entity);
         if (compatPayload != null) {
             payloadBytes = compatPayload.getBytes(StandardCharsets.UTF_8);
         } else if (entity instanceof ItemFrame itemFrame) {
             ItemStack stack = itemFrame.getItem();
             String itemId = "";
             int count = 1;
+            String blockEntityJson = null;
+            Integer mapId = null;
             if (stack != null && !stack.isEmpty()) {
                 itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
                 count = stack.getCount();
+                blockEntityJson = levelCompat.serializeItemBlockEntityJson(stack);
+                mapId = levelCompat.getItemMapId(stack);
             }
             int rot = itemFrame.getRotation();
             boolean isGlowing = (entity instanceof GlowItemFrame);
             boolean isInvisible = entity.isInvisible();
-            String json = VisualEntitySerializer.serializeItemFrame(itemId, count, rot, isGlowing, isInvisible, null);
+            String json = VisualEntitySerializer.serializeItemFrame(
+                    itemId, count, rot, isGlowing, isInvisible, mapId, blockEntityJson);
+            payloadBytes = json.getBytes(StandardCharsets.UTF_8);
+        } else if (entity instanceof ArmorStand armorStand) {
+            String json = VisualEntitySerializer.serializeArmorStand(
+                    armorStand.showArms(),
+                    !armorStand.showBasePlate(),
+                    armorStand.isSmall());
             payloadBytes = json.getBytes(StandardCharsets.UTF_8);
         } else {
             String json = VisualEntitySerializer.serializeGeneric(entityId);
