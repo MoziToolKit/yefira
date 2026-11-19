@@ -46,7 +46,7 @@ public class NativeSyncTest {
             int[] biomes = new int[]{0};
             String[] biomePalette = new String[]{"minecraft:plains"};
 
-            // 1. Submit baseline with empty visual entities
+            // 1. Submit baseline
             boolean success = NativeSync.nativeServerSubmitBaseline(
                     handle,
                     0L,
@@ -55,35 +55,11 @@ public class NativeSyncTest {
                     "minecraft:overworld",
                     states, statePalette,
                     biomes, biomePalette,
-                    new int[0], new String[0],
-                    new byte[0]
+                    new int[0], new String[0]
             );
             assertTrue(success, "Baseline submission must succeed");
 
-            // 2. Submit visual entity UPSERT & REMOVE
-            NativeSync.nativeServerSubmitVisualEntityUpsert(
-                    handle,
-                    0x1234567890abcdefL,
-                    0xfedcba0987654321L,
-                    "minecraft:painting",
-                    10.5, 65.0, 20.5,
-                    0.0f, 0.0f, 0.0f,
-                    1.0f, 1.0f, 1.0f,
-                    (byte) 2, // North
-                    "{\"variant\":\"minecraft:kebab\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8)
-            );
-
-            NativeSync.nativeServerSubmitVisualEntityRemove(
-                    handle,
-                    0x1234567890abcdefL,
-                    0xfedcba0987654321L
-            );
-
-            // 3. Query subscribed visual entities (initially empty)
-            String[] subs = NativeSync.nativeServerGetSubscribedVisualEntities(handle);
-            assertNotNull(subs);
-
-            // 4. Submit deltas with dynamic palette additions
+            // 2. Submit deltas with dynamic palette additions
             int[] relCoords = new int[]{0, 0, 0, 1, 0, 0};
             String[] stateStrings = new String[]{"minecraft:gold_block", "minecraft:diamond_block"};
             NativeSync.nativeServerSubmitDeltas(

@@ -9,8 +9,6 @@ import com.mozi1924.yefira.encoder.BlockChangeEntry;
 import com.mozi1924.yefira.encoder.CanonicalVoxelScanner;
 import com.mozi1924.yefira.encoder.EntityEntry;
 import com.mozi1924.yefira.encoder.NativeSync;
-import com.mozi1924.yefira.encoder.VisualEntityEntry;
-import com.mozi1924.yefira.encoder.VisualEntityScanner;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
 import net.minecraft.core.BlockPos;
@@ -45,7 +43,6 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     private final Map<BlockPos, BlockChangeEntry> pendingDeltaChanges = new LinkedHashMap<>();
     private SelectionBox pendingDeltaSelection;
     private final Set<BlockPos> trackedEntityPositions = Collections.newSetFromMap(new ConcurrentHashMap<>());
-    private final Map<UUID, VisualEntityEntry> trackedVisualEntities = new ConcurrentHashMap<>();
 
     public static WebSocketServerManager getInstance() {
         return INSTANCE;
@@ -264,7 +261,6 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
 
         try {
             CompletableFuture<CanonicalVoxelScanner.BaselineScanResult> scanFuture = new CompletableFuture<>();
-            CompletableFuture<List<VisualEntityEntry>> visualScanFuture = new CompletableFuture<>();
             boolean clientLevel = level.isClientSide();
             Runnable scanTask = () -> {
                 try {
@@ -274,16 +270,8 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                             () -> !isRunning(),
                             clientLevel ? CLIENT_SCAN_TIMEOUT_MILLIS : CanonicalVoxelScanner.DEFAULT_MAX_SCAN_MILLIS
                     ));
-
-                    String[] subscribedArr = NativeSync.nativeServerGetSubscribedVisualEntities(serverHandle);
-                    if (subscribedArr != null && subscribedArr.length > 0) {
-                        visualScanFuture.complete(VisualEntityScanner.scanVisualEntities(level, selection, Set.of(subscribedArr)));
-                    } else {
-                        visualScanFuture.complete(Collections.emptyList());
-                    }
                 } catch (Throwable t) {
                     scanFuture.completeExceptionally(t);
-                    visualScanFuture.completeExceptionally(t);
                 }
             };
 
@@ -297,15 +285,6 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             if (scan == null || !isRunning()) {
                 return;
             }
-
-            List<VisualEntityEntry> visualEntities = visualScanFuture.get(BASELINE_SCAN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            if (visualEntities != null) {
-                trackedVisualEntities.clear();
-                for (VisualEntityEntry ve : visualEntities) {
-                    trackedVisualEntities.put(ve.getUuid(), ve);
-                }
-            }
-            byte[] visualEntitiesBytes = VisualEntityEntry.serializeList(visualEntities);
 
             int numEntities = scan.entities != null ? scan.entities.size() : 0;
             int[] entityCoords = new int[numEntities * 3];
@@ -329,8 +308,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                     scan.biomeIndices,
                     scan.biomePalette.toArray(new String[0]),
                     entityCoords,
-                    entityJsons,
-                    visualEntitiesBytes
+                    entityJsons
             );
         } catch (Exception e) {
             Yefira.LOGGER.error("Failed to stream baseline for client " + clientId, e);
@@ -441,74 +419,12 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         return false;
     }
 
-    public void tickVisualEntities(long currentTick) {
-        if (currentTick % 5 != 0) return;
-        if (serverHandle == 0 || !isRunning() || getConnectedCount() == 0) return;
-        SelectionManager sm = SelectionManager.getInstance();
-        if (!sm.hasSelection() || sm.getCurrentLevel() == null) return;
-        syncVisualEntities(sm.getCurrentLevel(), sm.getCurrentSelection());
-    }
-
-    public void syncVisualEntities(Level level, SelectionBox selection) {
-        if (serverHandle == 0 || !isRunning() || getConnectedCount() == 0 || selection == null || level == null) {
-            return;
-        }
-        String[] subscribedArr = NativeSync.nativeServerGetSubscribedVisualEntities(serverHandle);
-        if (subscribedArr == null || subscribedArr.length == 0) {
-            trackedVisualEntities.clear();
-            return;
-        }
-        Set<String> subscribed = Set.of(subscribedArr);
-        List<VisualEntityEntry> currentEntities = VisualEntityScanner.scanVisualEntities(level, selection, subscribed);
-        Map<UUID, VisualEntityEntry> currentMap = new HashMap<>(currentEntities.size());
-        for (VisualEntityEntry e : currentEntities) {
-            currentMap.put(e.getUuid(), e);
-        }
-
-        // 1. Detect additions and modifications -> UPSERT
-        for (VisualEntityEntry curr : currentEntities) {
-            VisualEntityEntry prev = trackedVisualEntities.get(curr.getUuid());
-            if (prev == null || !Arrays.equals(prev.getCustomPayload(), curr.getCustomPayload())
-                    || prev.getX() != curr.getX() || prev.getY() != curr.getY() || prev.getZ() != curr.getZ()
-                    || prev.getYaw() != curr.getYaw() || prev.getPitch() != curr.getPitch()
-                    || prev.getFacing() != curr.getFacing()) {
-                NativeSync.nativeServerSubmitVisualEntityUpsert(
-                        serverHandle,
-                        curr.getUuid().getMostSignificantBits(),
-                        curr.getUuid().getLeastSignificantBits(),
-                        curr.getId(),
-                        curr.getX(), curr.getY(), curr.getZ(),
-                        curr.getPitch(), curr.getYaw(), curr.getRoll(),
-                        curr.getScaleX(), curr.getScaleY(), curr.getScaleZ(),
-                        curr.getFacing(),
-                        curr.getCustomPayload()
-                );
-                trackedVisualEntities.put(curr.getUuid(), curr);
-            }
-        }
-
-        // 2. Detect removals -> REMOVE
-        Iterator<Map.Entry<UUID, VisualEntityEntry>> it = trackedVisualEntities.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<UUID, VisualEntityEntry> entry = it.next();
-            if (!currentMap.containsKey(entry.getKey())) {
-                NativeSync.nativeServerSubmitVisualEntityRemove(
-                        serverHandle,
-                        entry.getKey().getMostSignificantBits(),
-                        entry.getKey().getLeastSignificantBits()
-                );
-                it.remove();
-            }
-        }
-    }
-
     private void clearPendingDeltaChanges() {
         synchronized (pendingDeltaChanges) {
             pendingDeltaChanges.clear();
             pendingDeltaSelection = null;
         }
         trackedEntityPositions.clear();
-        trackedVisualEntities.clear();
     }
 
     private static boolean sameBounds(SelectionBox a, SelectionBox b) {

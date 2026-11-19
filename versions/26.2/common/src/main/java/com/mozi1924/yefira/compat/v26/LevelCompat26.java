@@ -104,7 +104,7 @@ public class LevelCompat26 implements ILevelCompat {
     public String serializeBlockEntityJson(net.minecraft.world.level.block.entity.BlockEntity be) {
         if (be instanceof net.minecraft.world.level.block.entity.DecoratedPotBlockEntity pot) {
             net.minecraft.world.level.block.entity.PotDecorations dec = pot.getDecorations();
-            return com.mozi1924.yefira.compat.visual.VisualBlockEntity.serializeDecoratedPot(
+            return com.mozi1924.yefira.compat.blockentity.BlockEntitySerializer.serializeDecoratedPot(
                     getItemKey(dec.back()),
                     getItemKey(dec.left()),
                     getItemKey(dec.right()),
@@ -113,7 +113,7 @@ public class LevelCompat26 implements ILevelCompat {
         }
         if (be instanceof net.minecraft.world.level.block.entity.SkullBlockEntity skull) {
             String path = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(be.getBlockState().getBlock()).getPath();
-            String kind = com.mozi1924.yefira.compat.visual.VisualBlockEntity.resolveSkullKind(path);
+            String kind = com.mozi1924.yefira.compat.blockentity.BlockEntitySerializer.resolveSkullKind(path);
             Integer rot = null;
             if (be.getBlockState().hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.ROTATION_16)) {
                 rot = be.getBlockState().getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.ROTATION_16);
@@ -139,7 +139,7 @@ public class LevelCompat26 implements ILevelCompat {
                     }
                 }
             }
-            return com.mozi1924.yefira.compat.visual.VisualBlockEntity.serializeSkull(
+            return com.mozi1924.yefira.compat.blockentity.BlockEntitySerializer.serializeSkull(
                     kind,
                     rot,
                     name,
@@ -160,102 +160,9 @@ public class LevelCompat26 implements ILevelCompat {
                     patterns.add(new String[]{pat, col});
                 }
             }
-            return com.mozi1924.yefira.compat.visual.VisualBlockEntity.serializeBanner(baseColor, patterns);
+            return com.mozi1924.yefira.compat.blockentity.BlockEntitySerializer.serializeBanner(baseColor, patterns);
         }
         return null;
-    }
-
-    @Override
-    public String serializeEntityPayloadJson(net.minecraft.world.entity.Entity entity) {
-        if (entity instanceof net.minecraft.world.entity.decoration.painting.Painting painting) {
-            String variant = painting.getVariant().unwrapKey()
-                    .map(k -> k.identifier().getPath())
-                    .orElse("kebab");
-            var val = painting.getVariant().value();
-            int w = val != null ? (val.width() >= 16 ? val.width() / 16 : val.width()) : 1;
-            int h = val != null ? (val.height() >= 16 ? val.height() / 16 : val.height()) : 1;
-            net.minecraft.core.BlockPos anchor = painting.getPos();
-            return com.mozi1924.yefira.compat.visual.VisualEntitySerializer.serializePainting(
-                    variant, Math.max(1, w), Math.max(1, h), anchor.getX(), anchor.getY(), anchor.getZ()
-            );
-        }
-        return null;
-    }
-
-    @Override
-    public String serializeItemBlockEntityJson(net.minecraft.world.item.ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return null;
-        }
-
-        net.minecraft.world.level.block.entity.PotDecorations pot =
-                stack.get(net.minecraft.core.component.DataComponents.POT_DECORATIONS);
-        if (pot != null) {
-            return com.mozi1924.yefira.compat.visual.VisualBlockEntity.serializeDecoratedPot(
-                    getItemKey(pot.back()),
-                    getItemKey(pot.left()),
-                    getItemKey(pot.right()),
-                    getItemKey(pot.front())
-            );
-        }
-
-        net.minecraft.world.level.block.entity.BannerPatternLayers banner =
-                stack.get(net.minecraft.core.component.DataComponents.BANNER_PATTERNS);
-        if (banner != null) {
-            var baseColor = stack.get(net.minecraft.core.component.DataComponents.BASE_COLOR);
-            String baseColorName = baseColor != null ? baseColor.getName() : "white";
-            java.util.List<String[]> patterns = new java.util.ArrayList<>();
-            for (var layer : banner.layers()) {
-                String pat = layer.pattern().unwrapKey()
-                        .map(k -> k.identifier().getPath())
-                        .orElseGet(() -> layer.pattern().getRegisteredName());
-                patterns.add(new String[]{pat, layer.color().getName()});
-            }
-            return com.mozi1924.yefira.compat.visual.VisualBlockEntity.serializeBanner(
-                    baseColorName, patterns);
-        }
-
-        net.minecraft.world.item.component.ResolvableProfile resolvableProfile =
-                stack.get(net.minecraft.core.component.DataComponents.PROFILE);
-        if (resolvableProfile != null) {
-            String path = net.minecraft.core.registries.BuiltInRegistries.ITEM
-                    .getKey(stack.getItem()).getPath();
-            String kind = com.mozi1924.yefira.compat.visual.VisualBlockEntity.resolveSkullKind(path);
-            com.mojang.authlib.GameProfile profile = resolvableProfile.partialProfile();
-            String name = null;
-            String id = null;
-            String skinBase64 = null;
-            if (profile != null) {
-                name = profile.name();
-                if (profile.id() != null) {
-                    id = profile.id().toString();
-                }
-                var props = profile.properties();
-                if (props != null) {
-                    var textures = props.get("textures");
-                    if (textures != null && !textures.isEmpty()) {
-                        for (var p : textures) {
-                            skinBase64 = p.value();
-                            break;
-                        }
-                    }
-                }
-            }
-            return com.mozi1924.yefira.compat.visual.VisualBlockEntity.serializeSkull(
-                    kind, null, name, id, skinBase64);
-        }
-
-        return null;
-    }
-
-    @Override
-    public Integer getItemMapId(net.minecraft.world.item.ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return null;
-        }
-        net.minecraft.world.level.saveddata.maps.MapId mapId =
-                stack.get(net.minecraft.core.component.DataComponents.MAP_ID);
-        return mapId != null ? mapId.id() : null;
     }
 
     private static String getItemKey(java.util.Optional<net.minecraft.world.item.Item> opt) {

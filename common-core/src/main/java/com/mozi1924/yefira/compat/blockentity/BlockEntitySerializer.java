@@ -1,14 +1,16 @@
-package com.mozi1924.yefira.compat.visual;
+package com.mozi1924.yefira.compat.blockentity;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 /**
- * Universal Single Source of Truth (SSOT) serializer for Visual Semantic NBT JSON.
- * Pure Java implementation decoupled from Minecraft and Authlib compilation discrepancies.
+ * Canonical JSON encoder for block entity payloads (decorated pot, banner, skull).
+ *
+ * Pure Java, decoupled from Minecraft and Authlib so every version module shares one
+ * implementation. Continuous entities are not serialized here.
  */
-public final class VisualBlockEntity {
-    private VisualBlockEntity() {}
+public final class BlockEntitySerializer {
+    private BlockEntitySerializer() {}
 
     /**
      * Resolves the canonical skull kind string from a block registry path.
@@ -47,7 +49,7 @@ public final class VisualBlockEntity {
     }
 
     /**
-     * Serializes a Decorated Pot into canonical Visual Semantic NBT JSON.
+     * Serializes a Decorated Pot into canonical block entity JSON.
      * Sherds are normalized to pattern stems (e.g. "angler") and empty/brick sides serialize to null.
      */
     public static String serializeDecoratedPot(String back, String left, String right, String front) {
@@ -65,7 +67,7 @@ public final class VisualBlockEntity {
     }
 
     /**
-     * Serializes a Banner into canonical Visual Semantic NBT JSON.
+     * Serializes a Banner into canonical block entity JSON.
      *
      * @param baseColor Base dye color name (e.g. "red", "white", "black")
      * @param patterns List of [pattern, color] pairs (e.g. [["stripe_top", "blue"], ["flower", "white"]])
@@ -92,7 +94,7 @@ public final class VisualBlockEntity {
     }
 
     /**
-     * Serializes a Skull/Head into canonical Visual Semantic NBT JSON.
+     * Serializes a Skull/Head into canonical block entity JSON.
      *
      * @param kind "skeleton", "wither_skeleton", "zombie", "player", "creeper", "dragon", "piglin"
      * @param rotation 0..15 for floor skull, or null for wall skull
@@ -184,7 +186,7 @@ public final class VisualBlockEntity {
     }
 
     /**
-     * Minimal JSON string escaper shared with {@link VisualEntitySerializer}: quotes,
+     * Minimal JSON string escaper: quotes,
      * backslashes and control characters are escaped so a datapack-provided identifier can
      * never produce invalid JSON. Lone surrogates are replaced with U+FFFD.
      */

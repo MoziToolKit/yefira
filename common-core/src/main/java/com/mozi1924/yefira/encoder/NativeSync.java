@@ -198,8 +198,7 @@ public final class NativeSync {
             int[] rawBiomes,
             String[] biomePalette,
             int[] entityCoords,
-            String[] entityPayloads,
-            byte[] visualEntitiesBytes
+            String[] entityPayloads
     );
     public static native void nativeServerSubmitDeltas(
             long handle,
@@ -207,23 +206,6 @@ public final class NativeSync {
             String[] stateStrings,
             int[] entityCoords,
             String[] entityPayloads
-    );
-    public static native String[] nativeServerGetSubscribedVisualEntities(long handle);
-    public static native void nativeServerSubmitVisualEntityUpsert(
-            long handle,
-            long mostSig,
-            long leastSig,
-            String id,
-            double x, double y, double z,
-            float pitch, float yaw, float roll,
-            float scaleX, float scaleY, float scaleZ,
-            byte facing,
-            byte[] customPayload
-    );
-    public static native void nativeServerSubmitVisualEntityRemove(
-            long handle,
-            long mostSig,
-            long leastSig
     );
     public static native void nativeServerBroadcastPacket(long handle, byte[] data);
     public static native ServerEvent[] nativeServerPollEvents(long handle);

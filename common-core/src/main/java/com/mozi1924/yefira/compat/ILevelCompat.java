@@ -59,30 +59,4 @@ public interface ILevelCompat {
         return null;
     }
 
-    /**
-     * Serializes a visual entity's custom payload to JSON string if supported, or returns null.
-     */
-    default String serializeEntityPayloadJson(net.minecraft.world.entity.Entity entity) {
-        return null;
-    }
-
-    /**
-     * Serializes the held ItemStack's BlockEntity-backed visual components (decorated pot
-     * sherds, banner patterns, skull profile) into the canonical `block_entity` JSON value
-     * expected by `mtk_model::BlockEntityData`. Returns null when the item carries none.
-     *
-     * <p>Versions without a Data Components API return null and simply omit the payload.
-     */
-    default String serializeItemBlockEntityJson(net.minecraft.world.item.ItemStack stack) {
-        return null;
-    }
-
-    /**
-     * Returns the map id carried by a filled-map ItemStack, or null when absent.
-     *
-     * <p>Versions without a Data Components API return null and simply omit the field.
-     */
-    default Integer getItemMapId(net.minecraft.world.item.ItemStack stack) {
-        return null;
-    }
 }
