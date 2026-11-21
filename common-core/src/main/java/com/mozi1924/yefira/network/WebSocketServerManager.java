@@ -22,7 +22,7 @@ import java.util.concurrent.*;
  * Slimmed-down WebSocket Server Manager backed by high-performance native Rust core (mtk-sync and mtk-jni).
  * <p>
  * Handles Minecraft selection lifecycle, block change delta queuing, and voxel scanning,
- * while delegating all WebSocket network I/O, RFC v3.1 framing, dynamic palettes,
+ * while delegating all WebSocket network I/O, Protocol v4 framing, dynamic palettes,
  * chunking, sequence numbers, and client sessions to native Rust.
  */
 public class WebSocketServerManager implements SelectionManager.SelectionChangeListener {
@@ -225,6 +225,9 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                 }
                 break;
             }
+            case NativeSync.EVENT_WARNING:
+                Yefira.LOGGER.warn("Native sync server warning: {}", ev.message);
+                break;
             default:
                 break;
         }

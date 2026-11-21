@@ -108,4 +108,19 @@ public class NativeSyncTest {
         NativeSync.nativeServerClearSelection(handle);
         NativeSync.nativeServerStop(handle);
     }
+
+    @Test
+    public void testNativeServerPollEventsRetiredHandleSafety() {
+        assertTrue(NativeSync.isAvailable());
+        assertNull(NativeSync.nativeServerPollEvents(0L));
+
+        long handle = NativeSync.nativeServerStart("127.0.0.1", 0, null, true);
+        assertNotEquals(0L, handle, "Native server must start and return non-zero handle");
+        assertNotNull(NativeSync.nativeServerPollEvents(handle));
+
+        NativeSync.nativeServerStop(handle);
+        assertFalse(NativeSync.nativeServerIsRunning(handle));
+        assertNull(NativeSync.nativeServerPollEvents(handle));
+        NativeSync.nativeServerStop(handle);
+    }
 }

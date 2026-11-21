@@ -8,7 +8,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * High-performance JNI bridge for libmtk Native Live Sync (RFC v3.1 / v3.2 SSOT).
+ * High-performance JNI bridge for libmtk Native Live Sync (Protocol v4 SSOT).
  */
 public final class NativeSync {
 
@@ -147,6 +147,7 @@ public final class NativeSync {
     public static final int EVENT_CLIENT_DISCONNECTED = 2;
     public static final int EVENT_BASELINE_REQUESTED = 3;
     public static final int EVENT_CLIENT_RESYNC = 4;
+    public static final int EVENT_WARNING = 5;
 
     public static class ServerEvent {
         public final int type;

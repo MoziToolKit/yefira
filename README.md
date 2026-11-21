@@ -12,9 +12,9 @@
 
 作为 **MoziToolKit 协同生态** 的 Minecraft 事实源端，通过内置轻量化 WebSocket 通信架构与高频方块状态编码器，Yefira 能够将游戏内指定 3D 选区的权威方块数据、增量变化实时推送至 Blender 视口中构建三维点云与模型；底层由通用 Rust 引擎 [**`libmozitoolkit`**](https://github.com/MoziToolKit/libmozitoolkit) 接管高效二进制流解包与增量网格化；同时支持类似 Blender 视口的 Ghost 模式自由漫游与射线选区操作。
 
-> **权威协议规范**：服务端与 DCC 客户端之间的二进制帧、`state_hash`、基线/增量状态机、
+> **权威协议规范**：服务端与 DCC 客户端之间的二进制帧（Protocol v4 `0x04`）、`state_hash`、基线/增量状态机、
 > 资源硬限与错误恢复契约，以
-> **[RFC v3.1: MTK 2.0 Live Sync 协议与架构设计规范](https://github.com/MoziToolKit/MoziToolKit/blob/main/docs/live_sync/live_sync_protocol.md)** 为准。
+> **[MTK 2.0 Live Sync 协议与架构设计规范](https://github.com/MoziToolKit/MoziToolKit/blob/main/docs/live_sync/live_sync_protocol.md)** 为准。
 
 ---
 
@@ -26,7 +26,7 @@ Yefira 作为 Minecraft 端服务端/客户端伴生模组，与生态中的其�
 | :--- | :--- | :--- | :---: |
 | **[`MoziToolKit`](https://github.com/MoziToolKit/MoziToolKit)**<br>*(DCC 插件前端)* | **Blender 宿主界面与场景装配**<br>提供 3D 视图侧边栏面板、操作符、规范 PBR 材质节点树生成、点云伴生管理及视口实时渲染调度。 | Python 3.11+<br>Blender 5.0+ Extension | [🔗 GitHub](https://github.com/MoziToolKit/MoziToolKit) |
 | **[`libmozitoolkit`](https://github.com/MoziToolKit/libmozitoolkit)**<br>*(Rust 核心引擎 `libmtk`)* | **无头高性能几何与体素计算底座**<br>负责体素流解析、1.21+ 方块模型烘焙、邻域面遮挡剔除、2D 矩形装箱、66 种原版 Biome 调色板与 DNA 内存直灌。 | Rust 2021<br>PyO3 / ABI3 / WASM | [🔗 GitHub](https://github.com/MoziToolKit/libmozitoolkit) |
-| **`yefira`**<br>*(Minecraft 伴生模组，本仓库)* | **服务端权威体素扫描与实时协同**<br>基于 `NativeSync` (JNI) 驱动 Rust 原生 `LiveSyncServer` 推送三维选区、增量体素与连续视觉实体，支持 xxHash64 校验自愈与幽灵漫游模式。 | Java 17/21/25<br>Fabric / Forge / NeoForge | **当前仓库** |
+| **`yefira`**<br>*(Minecraft 伴生模组，本仓库)* | **服务端权威体素扫描与实时协同**<br>基于 `NativeSync` (JNI) 驱动 Rust 原生 `LiveSyncServer` 推送三维选区、增量体素与方块实体载荷，支持 xxHash64 校验自愈与幽灵漫游模式。 | Java 17/21/25<br>Fabric / Forge / NeoForge | **当前仓库** |
 
 ---
 
@@ -42,8 +42,8 @@ yefira/
 │   ├── network/                        # WebSocketServerManager 通信管理与 Native 句柄生命周期
 │   ├── selection/                      # SelectionBox 数学几何、坐标换算与状态流
 │   ├── config/                         # YefiraConfig 统一配置管理
-│   ├── encoder/                        # NativeSync JNI 桥接、BlockStateSerializer 与 Voxel/Entity 扫描器
-│   └── compat/                         # 统一版本抽象契约 (ILevelCompat / VersionCompat / 视觉实体序列化)
+│   ├── encoder/                        # NativeSync JNI 桥接、BlockStateSerializer 与 CanonicalVoxelScanner
+│   └── compat/                         # 统一版本抽象契约 (ILevelCompat / VersionCompat / BlockEntitySerializer)
 │
 ├── versions/
 │   ├── 1.20.1/                         # Era 1: Minecraft 1.20 - 1.20.1 (Java 17, Fabric & Forge)

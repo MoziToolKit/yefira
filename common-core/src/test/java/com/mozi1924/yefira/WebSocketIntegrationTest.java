@@ -20,9 +20,9 @@ public class WebSocketIntegrationTest {
     private static final int TEST_PORT = 18765;
     private static final String TEST_HOST = "127.0.0.1";
 
-    // RFC v3.1 mock client wire constants
+    // Live Sync Protocol v4 mock client wire constants
     private static final byte[] MAGIC = new byte[]{(byte) 0x4D, (byte) 0x54};
-    private static final byte PROTOCOL_VERSION = 0x03;
+    private static final byte PROTOCOL_VERSION = 0x04;
     private static final byte OPCODE_HELLO = 0x01;
     private static final byte OPCODE_WELCOME = 0x02;
     private static final byte OPCODE_PING = 0x0E;
@@ -39,8 +39,8 @@ public class WebSocketIntegrationTest {
         buf.put(MAGIC);
         buf.put(PROTOCOL_VERSION);
         buf.put(OPCODE_HELLO);
-        buf.putShort((short) 3);
-        buf.putShort((short) 3);
+        buf.putShort((short) (PROTOCOL_VERSION & 0xFF));
+        buf.putShort((short) (PROTOCOL_VERSION & 0xFF));
         buf.putInt(0);
         buf.putInt(0);
         buf.put(new byte[16]);
@@ -155,7 +155,7 @@ public class WebSocketIntegrationTest {
                     byte b1 = buf.get();
                     byte ver = buf.get();
                     byte op = buf.get();
-                    if (b0 == 'M' && b1 == 'T' && ver == 3) {
+                    if (b0 == 'M' && b1 == 'T' && ver == PROTOCOL_VERSION) {
                         if (op == OPCODE_ERROR) {
                             rejected.complete(true);
                         } else if (op == OPCODE_WELCOME) {
@@ -305,7 +305,7 @@ public class WebSocketIntegrationTest {
                 byte b1 = bytes.get();
                 byte ver = bytes.get();
                 byte op = bytes.get();
-                if (b0 == 'M' && b1 == 'T' && ver == 3 && op == OPCODE_PONG) {
+                if (b0 == 'M' && b1 == 'T' && ver == PROTOCOL_VERSION && op == OPCODE_PONG) {
                     pongFuture.complete(bytes.getLong());
                 }
             }
@@ -359,7 +359,7 @@ public class WebSocketIntegrationTest {
                 byte b1 = bytes.get();
                 byte ver = bytes.get();
                 byte op = bytes.get();
-                if (b0 == 'M' && b1 == 'T' && ver == 3 && op == OPCODE_ERROR) {
+                if (b0 == 'M' && b1 == 'T' && ver == PROTOCOL_VERSION && op == OPCODE_ERROR) {
                     bytes.getLong(); // skip epoch
                     errorCodeFuture.complete(bytes.getShort());
                 }
