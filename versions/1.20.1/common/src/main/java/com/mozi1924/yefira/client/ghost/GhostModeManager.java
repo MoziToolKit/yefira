@@ -37,6 +37,10 @@ public class GhostModeManager {
     // Mouse tracking for free cursor mode
     private double lastMouseX = -1.0;
     private double lastMouseY = -1.0;
+    private double currentMouseX = -1.0;
+    private double currentMouseY = -1.0;
+    private float renderedTanHalfFovX = 0.0f;
+    private float renderedTanHalfFovY = 0.0f;
 
     // Gizmo interaction constants
     public static final int CORNER_NONE = 0;
@@ -139,6 +143,10 @@ public class GhostModeManager {
         this.boxCreateCurrentPos = null;
         this.lastMouseX = mc.mouseHandler.xpos();
         this.lastMouseY = mc.mouseHandler.ypos();
+        this.currentMouseX = this.lastMouseX;
+        this.currentMouseY = this.lastMouseY;
+        this.renderedTanHalfFovX = 0.0f;
+        this.renderedTanHalfFovY = 0.0f;
 
         // Release mouse cursor for DCC interaction
         mc.mouseHandler.releaseMouse();
@@ -162,6 +170,10 @@ public class GhostModeManager {
         this.isBoxCreating = false;
         this.boxCreateStartPos = null;
         this.boxCreateCurrentPos = null;
+        this.currentMouseX = -1.0;
+        this.currentMouseY = -1.0;
+        this.renderedTanHalfFovX = 0.0f;
+        this.renderedTanHalfFovY = 0.0f;
 
         if (mc.player != null && mc.player.connection != null) {
             try {
@@ -313,9 +325,13 @@ public class GhostModeManager {
     public void onMouseMove(double mouseX, double mouseY) {
         if (!active) return;
 
+        this.currentMouseX = mouseX;
+        this.currentMouseY = mouseY;
+
         if (lastMouseX < 0 || lastMouseY < 0) {
             lastMouseX = mouseX;
             lastMouseY = mouseY;
+            updateGizmoHover();
             return;
         }
 
@@ -377,6 +393,8 @@ public class GhostModeManager {
     public boolean onMouseButton(int button, int action) {
         if (!active) return false;
         Minecraft mc = Minecraft.getInstance();
+        this.currentMouseX = mc.mouseHandler.xpos();
+        this.currentMouseY = mc.mouseHandler.ypos();
 
         // Free Cursor mode interaction
         if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
@@ -565,9 +583,18 @@ public class GhostModeManager {
 
     private record Ray(Vec3 origin, Vec3 dir) {}
 
+    public void updateRenderedProjection(org.joml.Matrix4fc projectionMatrix) {
+        if (projectionMatrix != null && Math.abs(projectionMatrix.m00()) > 1e-5f && Math.abs(projectionMatrix.m11()) > 1e-5f) {
+            this.renderedTanHalfFovX = 1.0f / Math.abs(projectionMatrix.m00());
+            this.renderedTanHalfFovY = 1.0f / Math.abs(projectionMatrix.m11());
+        }
+    }
+
     private Ray getMouseRay() {
         Minecraft mc = Minecraft.getInstance();
-        return getScreenRay(mc.mouseHandler.xpos(), mc.mouseHandler.ypos());
+        double mx = this.currentMouseX >= 0 ? this.currentMouseX : mc.mouseHandler.xpos();
+        double my = this.currentMouseY >= 0 ? this.currentMouseY : mc.mouseHandler.ypos();
+        return getScreenRay(mx, my);
     }
 
     private Ray getScreenRay(double mouseX, double mouseY) {
@@ -582,11 +609,19 @@ public class GhostModeManager {
         float nx = (float) ((2.0 * mouseX / width) - 1.0);
         float ny = (float) (1.0 - (2.0 * mouseY / height));
 
-        float fov = (float) mc.options.fov().get().intValue();
-
-        float aspect = (float) width / (float) height;
-        float tanHalfFovY = (float) Math.tan(Math.toRadians(fov / 2.0));
-        float tanHalfFovX = tanHalfFovY * aspect;
+        float tanHalfFovY;
+        float tanHalfFovX;
+        if (this.renderedTanHalfFovY > 1e-5f && this.renderedTanHalfFovX > 1e-5f) {
+            tanHalfFovY = this.renderedTanHalfFovY;
+            tanHalfFovX = this.renderedTanHalfFovX;
+        } else {
+            float fov = (float) mc.options.fov().get().intValue();
+            int fbW = mc.getWindow().getWidth();
+            int fbH = mc.getWindow().getHeight();
+            float aspect = (fbW > 0 && fbH > 0) ? ((float) fbW / (float) fbH) : ((float) width / (float) height);
+            tanHalfFovY = (float) Math.tan(Math.toRadians(fov / 2.0));
+            tanHalfFovX = tanHalfFovY * aspect;
+        }
 
         Vec3 forward = getForwardVector(yaw, pitch);
         Vec3 right = getRightVector(yaw);
@@ -616,11 +651,19 @@ public class GhostModeManager {
             return null; // Behind camera
         }
 
-        float fov = (float) mc.options.fov().get().intValue();
-
-        float aspect = (float) width / (float) height;
-        float tanHalfFovY = (float) Math.tan(Math.toRadians(fov / 2.0));
-        float tanHalfFovX = tanHalfFovY * aspect;
+        float tanHalfFovY;
+        float tanHalfFovX;
+        if (this.renderedTanHalfFovY > 1e-5f && this.renderedTanHalfFovX > 1e-5f) {
+            tanHalfFovY = this.renderedTanHalfFovY;
+            tanHalfFovX = this.renderedTanHalfFovX;
+        } else {
+            float fov = (float) mc.options.fov().get().intValue();
+            int fbW = mc.getWindow().getWidth();
+            int fbH = mc.getWindow().getHeight();
+            float aspect = (fbW > 0 && fbH > 0) ? ((float) fbW / (float) fbH) : ((float) width / (float) height);
+            tanHalfFovY = (float) Math.tan(Math.toRadians(fov / 2.0));
+            tanHalfFovX = tanHalfFovY * aspect;
+        }
 
         double xView = rel.dot(right);
         double yView = rel.dot(up);
@@ -662,8 +705,8 @@ public class GhostModeManager {
         BlockPos pos2 = getEffectivePos2();
 
         Minecraft mc = Minecraft.getInstance();
-        double mouseX = mc.mouseHandler.xpos();
-        double mouseY = mc.mouseHandler.ypos();
+        double mouseX = this.currentMouseX >= 0 ? this.currentMouseX : mc.mouseHandler.xpos();
+        double mouseY = this.currentMouseY >= 0 ? this.currentMouseY : mc.mouseHandler.ypos();
 
         double closestDist = 24.0; // 24 pixel hit radius
         int bestCorner = CORNER_NONE;

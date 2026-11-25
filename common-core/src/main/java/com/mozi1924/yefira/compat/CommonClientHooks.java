@@ -16,8 +16,22 @@ import java.util.concurrent.Executor;
 public final class CommonClientHooks {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("yefira");
+    private static volatile Runnable openGuiHandler;
 
     private CommonClientHooks() {}
+
+    public static void setOpenGuiHandler(Runnable handler) {
+        openGuiHandler = handler;
+    }
+
+    public static boolean openGui() {
+        Runnable handler = openGuiHandler;
+        if (handler == null) {
+            return false;
+        }
+        handler.run();
+        return true;
+    }
 
     /**
      * Common client joined server handler.

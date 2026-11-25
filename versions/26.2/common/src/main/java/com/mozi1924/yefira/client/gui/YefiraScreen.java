@@ -26,6 +26,7 @@ public class YefiraScreen extends Screen {
 
     private EditBox hostEdit;
     private EditBox portEdit;
+    private EditBox tokenEdit;
     private Checkbox autoStartCheckbox;
     private Button startStopButton;
     private Button restartButton;
@@ -33,6 +34,7 @@ public class YefiraScreen extends Screen {
 
     public YefiraScreen() {
         super(Component.translatable("yefira.gui.title"));
+        YefiraConfig.load();
     }
 
     private boolean isMultiplayer() {
@@ -121,16 +123,23 @@ public class YefiraScreen extends Screen {
         boolean isServerMode = (currentMode == SyncMode.SERVER);
 
         // Host EditBox
-        this.hostEdit = new EditBox(this.font, centerX - 100, startY + 20, 200, 20, Component.translatable("yefira.gui.host"));
+        this.hostEdit = new EditBox(this.font, centerX - 100, startY + 20, 134, 20, Component.translatable("yefira.gui.host"));
         this.hostEdit.setValue(isServerMode ? remoteServerAddress() : cfg.getHost());
         this.hostEdit.setEditable(!isServerMode);
         this.addRenderableWidget(this.hostEdit);
 
         // Port EditBox
-        this.portEdit = new EditBox(this.font, centerX - 100, startY + 60, 200, 20, Component.translatable("yefira.gui.port"));
+        this.portEdit = new EditBox(this.font, centerX + 38, startY + 20, 62, 20, Component.translatable("yefira.gui.port"));
         this.portEdit.setValue(String.valueOf(isServerMode ? remoteServerPort() : cfg.getPort()));
         this.portEdit.setEditable(!isServerMode);
         this.addRenderableWidget(this.portEdit);
+
+        // Auth Token EditBox
+        this.tokenEdit = new EditBox(this.font, centerX - 100, startY + 60, 200, 20, Component.translatable("yefira.gui.token"));
+        this.tokenEdit.setMaxLength(256);
+        this.tokenEdit.setValue(isServerMode ? "" : cfg.getAuthToken());
+        this.tokenEdit.setEditable(!isServerMode);
+        this.addRenderableWidget(this.tokenEdit);
 
         // AutoStart Checkbox
         this.autoStartCheckbox = Checkbox.builder(Component.translatable("yefira.gui.autostart"), this.font)
@@ -170,8 +179,11 @@ public class YefiraScreen extends Screen {
                     localServer.stopServer();
                 } else {
                     if (!localServer.startServer(cfg.getHost(), cfg.getPort()) && mc.player != null) {
-                        mc.player.sendSystemMessage(Component.translatable(
-                                "yefira.command.server.start_failed", cfg.getHost(), cfg.getPort()));
+                        String err = localServer.getLastStartError();
+                        mc.player.sendSystemMessage(
+                                err != null && !err.isBlank()
+                                        ? Component.literal("§c[Yefira] " + err)
+                                        : Component.translatable("yefira.command.server.start_failed", cfg.getHost(), cfg.getPort()));
                     }
                 }
                 updateButtonLabels();
@@ -189,7 +201,13 @@ public class YefiraScreen extends Screen {
                     mc.player.connection.sendCommand("yefira server restart");
                 }
             } else {
-                localServer.restartServer(cfg.getHost(), cfg.getPort());
+                if (!localServer.restartServer(cfg.getHost(), cfg.getPort()) && mc.player != null) {
+                    String err = localServer.getLastStartError();
+                    mc.player.sendSystemMessage(
+                            err != null && !err.isBlank()
+                                    ? Component.literal("§c[Yefira] " + err)
+                                    : Component.translatable("yefira.command.server.start_failed", cfg.getHost(), cfg.getPort()));
+                }
                 updateButtonLabels();
             }
         }).bounds(centerX + 5, startY + 140, 95, 20).build();
@@ -235,6 +253,9 @@ public class YefiraScreen extends Screen {
                 }
             } catch (NumberFormatException ignored) {}
         }
+        if (tokenEdit != null) {
+            cfg.setAuthToken(tokenEdit.getValue().trim());
+        }
         YefiraConfig.save();
     }
 
@@ -266,7 +287,8 @@ public class YefiraScreen extends Screen {
 
         // Labels
         graphics.text(this.font, Component.translatable("yefira.gui.host.label"), centerX - 100, startY + 8, 0xAAAAAA);
-        graphics.text(this.font, Component.translatable("yefira.gui.port.label"), centerX - 100, startY + 48, 0xAAAAAA);
+        graphics.text(this.font, Component.translatable("yefira.gui.port.label"), centerX + 38, startY + 8, 0xAAAAAA);
+        graphics.text(this.font, Component.translatable("yefira.gui.token.label"), centerX - 100, startY + 48, 0xAAAAAA);
 
         if (multi && currentMode == SyncMode.CLIENT) {
             graphics.centeredText(this.font,
@@ -292,9 +314,12 @@ public class YefiraScreen extends Screen {
             WebSocketServerManager server = WebSocketServerManager.getInstance();
             boolean running = server.isRunning();
             String host = server.getHost() != null ? server.getHost() : "0.0.0.0";
+            String startErr = !running ? server.getLastStartError() : null;
             statusComponent = running
                     ? Component.translatable("yefira.gui.status.running", host, String.valueOf(server.getPort()), String.valueOf(server.getConnectedCount()))
-                    : Component.translatable("yefira.gui.status.stopped");
+                    : (startErr != null && !startErr.isBlank()
+                            ? Component.literal("○ " + startErr)
+                            : Component.translatable("yefira.gui.status.stopped"));
             statusColor = running ? 0x55FF55 : 0xFF5555;
         }
         graphics.centeredText(this.font, statusComponent, centerX, startY + 212, statusColor);

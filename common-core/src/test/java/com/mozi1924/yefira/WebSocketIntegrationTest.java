@@ -284,6 +284,9 @@ public class WebSocketIntegrationTest {
         try {
             Assertions.assertFalse(server.startServer("0.0.0.0", 18766),
                     "A non-loopback bind must be refused without an auth token");
+            Assertions.assertNotNull(server.getLastStartError());
+            Assertions.assertTrue(server.getLastStartError().contains("Auth Token"),
+                    "Expected clear Auth Token diagnostic, got: " + server.getLastStartError());
         } finally {
             cfg.setAuthToken(previous);
         }

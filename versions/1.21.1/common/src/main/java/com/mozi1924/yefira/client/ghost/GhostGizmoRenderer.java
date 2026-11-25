@@ -26,15 +26,20 @@ public class GhostGizmoRenderer {
     public static final int COLOR_HIGHLIGHT = SelectionStyle.COLOR_HANDLE_HIGHLIGHT;
 
     private static class GizmoData {
+        final boolean isCenterPointOnly;
         final AABB centerBox;
         final float cr, cg, cb;
         final float fillAlpha;
         final Vec3 relOrigin;
         final float axisLength;
         final int colorX, colorY, colorZ;
+        final float widthX, widthY, widthZ;
 
-        GizmoData(AABB centerBox, float cr, float cg, float cb, float fillAlpha,
-                  Vec3 relOrigin, float axisLength, int colorX, int colorY, int colorZ) {
+        GizmoData(boolean isCenterPointOnly, AABB centerBox, float cr, float cg, float cb, float fillAlpha,
+                  Vec3 relOrigin, float axisLength,
+                  int colorX, int colorY, int colorZ,
+                  float widthX, float widthY, float widthZ) {
+            this.isCenterPointOnly = isCenterPointOnly;
             this.centerBox = centerBox;
             this.cr = cr;
             this.cg = cg;
@@ -45,6 +50,9 @@ public class GhostGizmoRenderer {
             this.colorX = colorX;
             this.colorY = colorY;
             this.colorZ = colorZ;
+            this.widthX = widthX;
+            this.widthY = widthY;
+            this.widthZ = widthZ;
         }
     }
 
@@ -54,6 +62,8 @@ public class GhostGizmoRenderer {
 
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (!ghost.isActive()) return;
+
+        ghost.updateRenderedProjection(com.mojang.blaze3d.systems.RenderSystem.getProjectionMatrix());
 
         SelectionManager mgr = SelectionManager.getInstance();
         Vec3 camPos = camera.getPosition();
@@ -72,7 +82,7 @@ public class GhostGizmoRenderer {
                 SelectionStyle.b(SelectionStyle.COLOR_HOVER_BLOCK_FILL),
                 SelectionStyle.a(SelectionStyle.COLOR_HOVER_BLOCK_FILL)
             );
-            VertexConsumer lineBuffer = bufferSource.getBuffer(YefiraRenderTypes.gizmoLines());
+            VertexConsumer lineBuffer = bufferSource.getBuffer(YefiraRenderTypes.gizmoLines(SelectionStyle.WIDTH_HOVER_BLOCK_STROKE));
             RenderCompat.renderLineBox(
                 poseStack, lineBuffer, blockBox,
                 SelectionStyle.r(SelectionStyle.COLOR_HOVER_BLOCK_STROKE),
@@ -81,7 +91,6 @@ public class GhostGizmoRenderer {
                 SelectionStyle.a(SelectionStyle.COLOR_HOVER_BLOCK_STROKE)
             );
             RenderCompat.endLastBatch(bufferSource);
-            return;
         }
 
         // 2. Render Box Creation Preview when dragging to create
@@ -192,17 +201,22 @@ public class GhostGizmoRenderer {
             RenderCompat.renderGizmoFilledBox(poseStack, bufferSource, gizmo.centerBox, gizmo.cr, gizmo.cg, gizmo.cb, gizmo.fillAlpha);
         }
 
-        // Pass 2: Render Always-On-Top Lines (Center box wireframes & 3D Axis Arrows)
-        VertexConsumer lineBuffer = bufferSource.getBuffer(YefiraRenderTypes.gizmoLines());
+        // Pass 2: Render Always-On-Top Lines (Center box wireframes & 3D Axis Arrows matching 26.2 Gizmos)
+        VertexConsumer boxLineBuffer = bufferSource.getBuffer(YefiraRenderTypes.gizmoLines(3.0f));
         for (GizmoData gizmo : gizmos) {
-            RenderCompat.renderLineBox(poseStack, lineBuffer, gizmo.centerBox, gizmo.cr, gizmo.cg, gizmo.cb, 1.0f);
+            if (!gizmo.isCenterPointOnly) {
+                RenderCompat.renderLineBox(poseStack, boxLineBuffer, gizmo.centerBox, gizmo.cr, gizmo.cg, gizmo.cb, 1.0f);
+            }
+        }
+        RenderCompat.endLastBatch(bufferSource);
 
+        for (GizmoData gizmo : gizmos) {
             // X Axis (Red)
-            drawAxisArrow(poseStack, lineBuffer, gizmo.relOrigin, new Vec3(1, 0, 0), new Vec3(0, 1, 0), new Vec3(0, 0, 1), gizmo.axisLength, gizmo.colorX);
+            drawAxisArrow(poseStack, bufferSource, gizmo.relOrigin, new Vec3(1, 0, 0), new Vec3(0, 1, 0), new Vec3(0, 0, 1), gizmo.axisLength, gizmo.colorX, gizmo.widthX);
             // Y Axis (Green)
-            drawAxisArrow(poseStack, lineBuffer, gizmo.relOrigin, new Vec3(0, 1, 0), new Vec3(1, 0, 0), new Vec3(0, 0, 1), gizmo.axisLength, gizmo.colorY);
+            drawAxisArrow(poseStack, bufferSource, gizmo.relOrigin, new Vec3(0, 1, 0), new Vec3(1, 0, 0), new Vec3(0, 0, 1), gizmo.axisLength, gizmo.colorY, gizmo.widthY);
             // Z Axis (Blue)
-            drawAxisArrow(poseStack, lineBuffer, gizmo.relOrigin, new Vec3(0, 0, 1), new Vec3(1, 0, 0), new Vec3(0, 1, 0), gizmo.axisLength, gizmo.colorZ);
+            drawAxisArrow(poseStack, bufferSource, gizmo.relOrigin, new Vec3(0, 0, 1), new Vec3(1, 0, 0), new Vec3(0, 1, 0), gizmo.axisLength, gizmo.colorZ, gizmo.widthZ);
         }
 
         RenderCompat.endLastBatch(bufferSource);
@@ -238,16 +252,19 @@ public class GhostGizmoRenderer {
         // X Axis (Red)
         boolean xHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_X);
         int colorX = xHighlighted ? COLOR_HIGHLIGHT : COLOR_X;
+        float widthX = xHighlighted ? 5.0f : 3.0f;
 
         // Y Axis (Green)
         boolean yHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_Y);
         int colorY = yHighlighted ? COLOR_HIGHLIGHT : COLOR_Y;
+        float widthY = yHighlighted ? 5.0f : 3.0f;
 
         // Z Axis (Blue)
         boolean zHighlighted = isCurrentCorner && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_Z);
         int colorZ = zHighlighted ? COLOR_HIGHLIGHT : COLOR_Z;
+        float widthZ = zHighlighted ? 5.0f : 3.0f;
 
-        return new GizmoData(centerBox, cr, cg, cb, 0.5f, relOrigin, axisLength, colorX, colorY, colorZ);
+        return new GizmoData(false, centerBox, cr, cg, cb, 0.5f, relOrigin, axisLength, colorX, colorY, colorZ, widthX, widthY, widthZ);
     }
 
     private static GizmoData prepareCenterGizmo(Vec3 camPos, Vec3 center) {
@@ -255,7 +272,7 @@ public class GhostGizmoRenderer {
         Vec3 cameraPos = ghost.getCameraPos();
         double dist = Math.max(0.5, center.distanceTo(cameraPos));
         float axisLength = (float) (dist * SelectionStyle.HANDLE_AXIS_RATIO);
-        float centerHalf = (float) (dist * SelectionStyle.HANDLE_CENTER_RATIO);
+        float pointHalf = (float) (dist * 0.008);
 
         int hoveredCorner = ghost.getHoveredCorner();
         int hoveredAxis = ghost.getHoveredAxis();
@@ -267,12 +284,12 @@ public class GhostGizmoRenderer {
 
         Vec3 relCenter = center.subtract(camPos);
 
-        // Center cube
+        // Small center point marker matching 26.2 Gizmos.point(center, COLOR_CENTER, 7.0f)
         boolean centerHighlighted = isCenterGizmo && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_CENTER);
         int centerColor = centerHighlighted ? COLOR_HIGHLIGHT : COLOR_CENTER;
         AABB centerBox = new AABB(
-            relCenter.x - centerHalf, relCenter.y - centerHalf, relCenter.z - centerHalf,
-            relCenter.x + centerHalf, relCenter.y + centerHalf, relCenter.z + centerHalf
+            relCenter.x - pointHalf, relCenter.y - pointHalf, relCenter.z - pointHalf,
+            relCenter.x + pointHalf, relCenter.y + pointHalf, relCenter.z + pointHalf
         );
         float cr = SelectionStyle.r(centerColor);
         float cg = SelectionStyle.g(centerColor);
@@ -280,51 +297,38 @@ public class GhostGizmoRenderer {
 
         // X Axis
         boolean xHighlighted = isCenterGizmo && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_X);
-        int colorX = xHighlighted ? COLOR_HIGHLIGHT : COLOR_X;
+        int colorX = xHighlighted ? COLOR_HIGHLIGHT : (COLOR_X & 0xAAFFFFFF);
+        float widthX = xHighlighted ? 4.0f : 2.0f;
 
         // Y Axis
         boolean yHighlighted = isCenterGizmo && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_Y);
-        int colorY = yHighlighted ? COLOR_HIGHLIGHT : COLOR_Y;
+        int colorY = yHighlighted ? COLOR_HIGHLIGHT : (COLOR_Y & 0xAAFFFFFF);
+        float widthY = yHighlighted ? 4.0f : 2.0f;
 
         // Z Axis
         boolean zHighlighted = isCenterGizmo && ((draggingCorner != GhostModeManager.CORNER_NONE ? draggingAxis : hoveredAxis) == GhostModeManager.AXIS_Z);
-        int colorZ = zHighlighted ? COLOR_HIGHLIGHT : COLOR_Z;
+        int colorZ = zHighlighted ? COLOR_HIGHLIGHT : (COLOR_Z & 0xAAFFFFFF);
+        float widthZ = zHighlighted ? 4.0f : 2.0f;
 
-        return new GizmoData(centerBox, cr, cg, cb, 0.6f, relCenter, axisLength, colorX, colorY, colorZ);
+        return new GizmoData(true, centerBox, cr, cg, cb, 1.0f, relCenter, axisLength, colorX, colorY, colorZ, widthX, widthY, widthZ);
     }
 
-    private static void drawAxisArrow(PoseStack poseStack, VertexConsumer lines,
+    private static void drawAxisArrow(PoseStack poseStack, MultiBufferSource bufferSource,
                                       Vec3 origin, Vec3 dir, Vec3 u, Vec3 v,
-                                      float axisLength, int color) {
+                                      float axisLength, int color, float lineWidth) {
+        VertexConsumer lines = bufferSource.getBuffer(YefiraRenderTypes.gizmoLines(lineWidth));
         Vec3 tip = origin.add(dir.scale(axisLength));
-        float headLen = axisLength * 0.28f;
-        float headRadius = headLen * 0.42f;
+        float headLen = Math.max(0.1f, Math.min(1.0f, axisLength * 0.1f));
         Vec3 base = tip.subtract(dir.scale(headLen));
 
-        // 1. Shaft line from origin to tip
+        // 1. Shaft line from origin to tip (matching 26.2 ArrowGizmo)
         drawLine(poseStack, lines, origin, tip, color);
 
-        // 2. Base perimeter vertices on the plane orthogonal to dir
-        Vec3 b0 = base.add(u.scale(headRadius));
-        Vec3 b1 = base.add(v.scale(headRadius));
-        Vec3 b2 = base.subtract(u.scale(headRadius));
-        Vec3 b3 = base.subtract(v.scale(headRadius));
-
-        // 3. Four side edges pointing to tip (forming 3D pyramid arrowhead)
-        drawLine(poseStack, lines, b0, tip, color);
-        drawLine(poseStack, lines, b1, tip, color);
-        drawLine(poseStack, lines, b2, tip, color);
-        drawLine(poseStack, lines, b3, tip, color);
-
-        // 4. Closed base ring
-        drawLine(poseStack, lines, b0, b1, color);
-        drawLine(poseStack, lines, b1, b2, color);
-        drawLine(poseStack, lines, b2, b3, color);
-        drawLine(poseStack, lines, b3, b0, color);
-
-        // 5. Cross diagonals on base
-        drawLine(poseStack, lines, b0, b2, color);
-        drawLine(poseStack, lines, b1, b3, color);
+        // 2. Four clean arrowhead barbs pointing to tip
+        drawLine(poseStack, lines, base.add(u.scale(headLen)), tip, color);
+        drawLine(poseStack, lines, base.add(v.scale(headLen)), tip, color);
+        drawLine(poseStack, lines, base.subtract(u.scale(headLen)), tip, color);
+        drawLine(poseStack, lines, base.subtract(v.scale(headLen)), tip, color);
     }
 
     private static void drawLine(PoseStack poseStack, VertexConsumer lines, Vec3 p1, Vec3 p2, int argb) {

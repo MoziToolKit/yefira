@@ -121,7 +121,15 @@ def registerVersionExec(String taskName, String versionDir, int javaVer, String 
             environment 'JAVA_HOME', jh
         }
 
-        commandLine project.ext.isWindows ? ['cmd', '/c', project.ext.gradlewCmd, subtask] : [project.ext.gradlewCmd, subtask]
+        def jdkPaths = [17, 21, 25].collect { findJavaHome(it) }.findAll { it != null && !it.isEmpty() }.unique()
+        def extraArgs = []
+        if (!jdkPaths.isEmpty()) {
+            extraArgs << "-Porg.gradle.java.installations.paths=${jdkPaths.join(',')}"
+            extraArgs << "-Porg.gradle.java.installations.auto-download=false"
+        }
+
+        def baseCmd = project.ext.isWindows ? ['cmd', '/c', project.ext.gradlewCmd, subtask] : [project.ext.gradlewCmd, subtask]
+        commandLine (baseCmd + extraArgs)
     }
 }
 

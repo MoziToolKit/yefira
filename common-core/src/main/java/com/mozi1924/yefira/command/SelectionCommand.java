@@ -298,33 +298,12 @@ public class SelectionCommand {
             source.sendFailure(Component.translatable("yefira.command.gui.unavailable"));
             return 0;
         }
-        try {
-            openGuiClient();
+        if (com.mozi1924.yefira.compat.CommonClientHooks.openGui()) {
             source.sendSuccess(() -> Component.translatable("yefira.command.gui.opened"), false);
             return 1;
-        } catch (Throwable t) {
-            source.sendFailure(Component.translatable("yefira.command.gui.unavailable"));
-            return 0;
         }
-    }
-
-    private static void openGuiClient() {
-        try {
-            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-            mc.execute(() -> {
-                try {
-                    Object screen = Class.forName("com.mozi1924.yefira.client.gui.YefiraScreen")
-                            .getConstructor().newInstance();
-                    try {
-                        mc.getClass().getMethod("setScreenAndShow", net.minecraft.client.gui.screens.Screen.class)
-                                .invoke(mc, screen);
-                    } catch (NoSuchMethodException e) {
-                        mc.getClass().getMethod("setScreen", net.minecraft.client.gui.screens.Screen.class)
-                                .invoke(mc, screen);
-                    }
-                } catch (Throwable ignored) {}
-            });
-        } catch (Throwable ignored) {}
+        source.sendFailure(Component.translatable("yefira.command.gui.unavailable"));
+        return 0;
     }
 
     private static int serverStart(CommandContext<CommandSourceStack> ctx) {
@@ -336,7 +315,10 @@ public class SelectionCommand {
         } else {
             boolean started = server.startServer(cfg.getHost(), cfg.getPort());
             if (!started) {
-                source.sendFailure(Component.translatable("yefira.command.server.start_failed", cfg.getHost(), cfg.getPort()));
+                String err = server.getLastStartError();
+                source.sendFailure(err != null && !err.isBlank()
+                        ? Component.literal("§c[Yefira] " + err)
+                        : Component.translatable("yefira.command.server.start_failed", cfg.getHost(), cfg.getPort()));
             } else {
                 source.sendSuccess(() -> Component.translatable("yefira.command.server.started", cfg.getHost(), cfg.getPort()), true);
             }
@@ -362,7 +344,10 @@ public class SelectionCommand {
         YefiraConfig cfg = YefiraConfig.getInstance();
         boolean started = server.restartServer(cfg.getHost(), cfg.getPort());
         if (!started) {
-            source.sendFailure(Component.translatable("yefira.command.server.start_failed", cfg.getHost(), cfg.getPort()));
+            String err = server.getLastStartError();
+            source.sendFailure(err != null && !err.isBlank()
+                    ? Component.literal("§c[Yefira] " + err)
+                    : Component.translatable("yefira.command.server.start_failed", cfg.getHost(), cfg.getPort()));
         } else {
             source.sendSuccess(() -> Component.translatable("yefira.command.server.restarted", cfg.getHost(), cfg.getPort()), true);
         }
@@ -468,6 +453,17 @@ public class SelectionCommand {
         YefiraConfig cfg = YefiraConfig.getInstance();
         cfg.setAuthToken(token);
         YefiraConfig.save();
+        WebSocketServerManager server = WebSocketServerManager.getInstance();
+        if (server.isRunning()) {
+            boolean restarted = server.restartServer(cfg.getHost(), cfg.getPort());
+            if (!restarted) {
+                String err = server.getLastStartError();
+                source.sendFailure(err != null && !err.isBlank()
+                        ? Component.literal("§c[Yefira] " + err)
+                        : Component.translatable("yefira.command.server.start_failed", cfg.getHost(), cfg.getPort()));
+                return 0;
+            }
+        }
         source.sendSuccess(() -> Component.translatable("yefira.command.config.token.set",
                 String.valueOf(cfg.getAuthToken() != null && !cfg.getAuthToken().isEmpty())), true);
         return 1;

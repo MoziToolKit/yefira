@@ -40,11 +40,11 @@ public class YefiraConfig {
      */
     private boolean allowLoopbackWithoutToken = false;
 
-    public static YefiraConfig getInstance() {
+    public static synchronized YefiraConfig getInstance() {
         return instance;
     }
 
-    public static void load() {
+    public static synchronized void load() {
         Path configPath = getConfigPath();
         if (!Files.exists(configPath)) {
             save();
@@ -98,7 +98,7 @@ public class YefiraConfig {
         }
     }
 
-    public static void save() {
+    public static synchronized void save() {
         try {
             Path configPath = getConfigPath();
             JsonObject obj = new JsonObject();

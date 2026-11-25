@@ -20,13 +20,23 @@ public class YefiraRenderTypes extends RenderType {
         super(name, format, mode, bufferSize, affectsCrumbling, sortOnUpload, setupState, clearState);
     }
 
-    private static final RenderType GIZMO_LINES = createGizmoLines();
+    private static final RenderType GIZMO_LINES_THIN = createGizmoLines(2.0);
+    private static final RenderType GIZMO_LINES = createGizmoLines(3.0);
+    private static final RenderType GIZMO_LINES_CENTER_HIGHLIGHT = createGizmoLines(4.0);
+    private static final RenderType GIZMO_LINES_THICK = createGizmoLines(5.0);
     private static final RenderType GIZMO_FILLED_BOX = createGizmoFilledBox();
     private static final RenderType SELECTION_FILLED_BOX = createSelectionFilledBox();
     private static final RenderType SELECTION_LINES_NORMAL = createSelectionLines(2.0);
     private static final RenderType SELECTION_LINES_THICK = createSelectionLines(2.5);
 
     public static RenderType gizmoLines() {
+        return GIZMO_LINES;
+    }
+
+    public static RenderType gizmoLines(float width) {
+        if (width <= 2.25f) return GIZMO_LINES_THIN;
+        if (width >= 4.5f) return GIZMO_LINES_THICK;
+        if (width >= 3.5f) return GIZMO_LINES_CENTER_HIGHLIGHT;
         return GIZMO_LINES;
     }
 
@@ -46,8 +56,8 @@ public class YefiraRenderTypes extends RenderType {
         return SELECTION_LINES_THICK;
     }
 
-    private static RenderType createGizmoLines() {
-        RenderStateShard.LineStateShard lineState = new RenderStateShard.LineStateShard(OptionalDouble.of(3.0));
+    private static RenderType createGizmoLines(double lineWidth) {
+        RenderStateShard.LineStateShard lineState = new RenderStateShard.LineStateShard(OptionalDouble.of(lineWidth));
         Runnable setup = () -> {
             RENDERTYPE_LINES_SHADER.setupRenderState();
             lineState.setupRenderState();
@@ -67,7 +77,7 @@ public class YefiraRenderTypes extends RenderType {
             RENDERTYPE_LINES_SHADER.clearRenderState();
         };
         return new YefiraRenderTypes(
-            "yefira_gizmo_lines",
+            "yefira_gizmo_lines_" + (int) (lineWidth * 10),
             DefaultVertexFormat.POSITION_COLOR_NORMAL,
             VertexFormat.Mode.LINES,
             1536,

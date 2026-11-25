@@ -1,8 +1,11 @@
 package com.mozi1924.yefira;
 
+import com.mozi1924.yefira.compat.CommonClientHooks;
 import com.mozi1924.yefira.config.YefiraConfig;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ConfigTest {
 
@@ -52,5 +55,18 @@ public class ConfigTest {
         Assertions.assertEquals(512, config.getMaxSideSoftLimit());
         config.setMaxSideSoftLimit(-1); // invalid, should ignore
         Assertions.assertEquals(512, config.getMaxSideSoftLimit());
+    }
+
+    @Test
+    public void testOpenGuiHookDispatch() {
+        CommonClientHooks.setOpenGuiHandler(null);
+        Assertions.assertFalse(CommonClientHooks.openGui());
+
+        AtomicBoolean invoked = new AtomicBoolean(false);
+        CommonClientHooks.setOpenGuiHandler(() -> invoked.set(true));
+        Assertions.assertTrue(CommonClientHooks.openGui());
+        Assertions.assertTrue(invoked.get());
+
+        CommonClientHooks.setOpenGuiHandler(null);
     }
 }

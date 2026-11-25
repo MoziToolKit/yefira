@@ -37,6 +37,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             TimeUnit.MILLISECONDS.toSeconds(CanonicalVoxelScanner.DEFAULT_MAX_SCAN_MILLIS) + 10L;
 
     private volatile long serverHandle = 0;
+    private volatile String lastStartError = null;
     private volatile Thread eventPollerThread;
     private volatile ExecutorService streamingExecutor = createStreamingExecutor();
 
@@ -82,6 +83,10 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         return serverHandle != 0 ? NativeSync.nativeServerGetClientCount(serverHandle) : 0;
     }
 
+    public String getLastStartError() {
+        return lastStartError;
+    }
+
     private WebSocketServerManager() {}
 
     private static ExecutorService createStreamingExecutor() {
@@ -112,14 +117,24 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             Yefira.LOGGER.info("WebSocket Server is already running on {}:{}", HOST, PORT);
             return true;
         }
+        lastStartError = null;
         setHost(host);
         setPort(port);
+
+        if (!NativeSync.isAvailable()) {
+            Throwable loadErr = NativeSync.getLoadError();
+            String reason = loadErr != null ? loadErr.getMessage() : "native library not loaded";
+            lastStartError = "Native mtk_jni unavailable (" + reason + ")";
+            Yefira.LOGGER.error("Cannot start WebSocket Server: {}", lastStartError, loadErr);
+            return false;
+        }
 
         YefiraConfig cfg = YefiraConfig.getInstance();
         String token = cfg.getAuthToken();
         boolean allowLoopback = cfg.isAllowLoopbackWithoutToken();
 
         if (!isLoopbackHost(HOST) && (token == null || token.isBlank())) {
+            lastStartError = "Non-loopback host " + HOST + " requires an Auth Token.";
             Yefira.LOGGER.error(
                     "Refusing to bind WebSocket Server to non-loopback host {} without authToken. "
                             + "Set /yefira config token <secret> or bind 127.0.0.1.",
@@ -131,6 +146,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         try {
             serverHandle = NativeSync.nativeServerStart(HOST, PORT, token, allowLoopback);
             if (serverHandle == 0) {
+                lastStartError = "Failed to bind " + HOST + ":" + PORT + " (port in use or invalid host).";
                 Yefira.LOGGER.error("Native WebSocket Server failed to bind {}:{}", HOST, PORT);
                 return false;
             }
@@ -147,8 +163,9 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
 
             Yefira.LOGGER.info("Native WebSocket Server started on {}:{}", HOST, getPort());
             return true;
-        } catch (Exception e) {
-            Yefira.LOGGER.error("Failed to start native WebSocket Server on " + HOST + ":" + PORT, e);
+        } catch (Throwable t) {
+            lastStartError = t.getClass().getSimpleName() + (t.getMessage() != null ? ": " + t.getMessage() : "");
+            Yefira.LOGGER.error("Failed to start native WebSocket Server on " + HOST + ":" + PORT, t);
             stopServer();
             return false;
         }

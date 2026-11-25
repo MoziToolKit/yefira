@@ -20,6 +20,10 @@ public class YefiraClient {
     public static KeyMapping keyPresetBox;
 
     public static void init() {
+        CommonClientHooks.setOpenGuiHandler(() -> {
+            Minecraft mc = Minecraft.getInstance();
+            mc.execute(() -> mc.setScreen(new YefiraScreen()));
+        });
     }
 
     public static void createKeyMappings() {
