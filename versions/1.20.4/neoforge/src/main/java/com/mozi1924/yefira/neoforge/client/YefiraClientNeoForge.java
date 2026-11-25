@@ -2,8 +2,11 @@ package com.mozi1924.yefira.neoforge.client;
 
 import com.mozi1924.yefira.Yefira;
 import com.mozi1924.yefira.client.YefiraClient;
+import com.mozi1924.yefira.client.compat.ClientCompat;
+import com.mozi1924.yefira.client.compat.RenderCompat;
 import com.mozi1924.yefira.client.ghost.GhostGizmoRenderer;
 import com.mozi1924.yefira.client.ghost.GhostHudOverlay;
+import com.mozi1924.yefira.client.render.IRenderContext;
 import com.mozi1924.yefira.client.render.SelectionBoxRenderer;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
@@ -22,12 +25,15 @@ public class YefiraClientNeoForge {
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
-        YefiraClient.init();
-        YefiraClient.createKeyMappings();
+        YefiraClient.init(ClientCompat.INSTANCE);
+        if (YefiraClient.keyGhostMode == null) {
+            YefiraClient.createKeyMappings();
+        }
     }
 
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
+        YefiraClient.init(ClientCompat.INSTANCE);
         if (YefiraClient.keyGhostMode == null) {
             YefiraClient.createKeyMappings();
         }
@@ -51,15 +57,20 @@ public class YefiraClientNeoForge {
         @SubscribeEvent
         public static void onRenderLevelStage(RenderLevelStageEvent event) {
             if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
-                SelectionBoxRenderer.render(event.getPoseStack(), Minecraft.getInstance().renderBuffers().bufferSource(), event.getCamera());
-                GhostGizmoRenderer.render(event.getPoseStack(), Minecraft.getInstance().renderBuffers().bufferSource(), event.getCamera());
+                IRenderContext renderCtx = RenderCompat.createContext(
+                        event.getPoseStack(),
+                        Minecraft.getInstance().renderBuffers().bufferSource(),
+                        event.getCamera()
+                );
+                SelectionBoxRenderer.render(renderCtx);
+                GhostGizmoRenderer.render(renderCtx);
             }
         }
 
         @SubscribeEvent
         public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
             if (VanillaGuiOverlay.HOTBAR.id().equals(event.getOverlay().id())) {
-                GhostHudOverlay.renderOverlay(event.getGuiGraphics());
+                GhostHudOverlay.renderOverlay(RenderCompat.wrapGui(event.getGuiGraphics()));
             }
         }
 

@@ -1,17 +1,14 @@
 package com.mozi1924.yefira.client;
 
-import com.mojang.blaze3d.platform.InputConstants;
-import com.mozi1924.yefira.Yefira;
 import com.mozi1924.yefira.client.ghost.GhostModeManager;
-import com.mozi1924.yefira.client.gui.YefiraScreen;
 import com.mozi1924.yefira.compat.CommonClientHooks;
+import com.mozi1924.yefira.compat.IClientCompat;
+import com.mozi1924.yefira.compat.VersionCompat;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 
 public class YefiraClient {
-
-    public static final KeyMapping.Category YEFIRA_CATEGORY = KeyMapping.Category.register(Yefira.id("selection"));
 
     public static KeyMapping keyGhostMode;
     public static KeyMapping keyOpenGui;
@@ -19,48 +16,32 @@ public class YefiraClient {
     public static KeyMapping keyClear;
     public static KeyMapping keyPresetBox;
 
-    public static void init() {
-        CommonClientHooks.setOpenGuiHandler(() -> {
-            Minecraft mc = Minecraft.getInstance();
-            mc.execute(() -> mc.setScreenAndShow(new YefiraScreen()));
-        });
+    private static volatile boolean initialized = false;
+
+    public static void init(IClientCompat compat) {
+        if (compat != null) {
+            VersionCompat.setClientCompat(compat);
+        }
+        if (!initialized) {
+            initialized = true;
+            CommonClientHooks.setOpenGuiHandler(() -> {
+                Minecraft mc = Minecraft.getInstance();
+                mc.execute(() -> openConfigScreen(mc));
+            });
+        }
+    }
+
+    public static void openConfigScreen(Minecraft mc) {
+        VersionCompat.client().openScreen(mc, VersionCompat.client().createConfigScreen());
     }
 
     public static void createKeyMappings() {
-        keyGhostMode = new KeyMapping(
-            "key.yefira.ghost_mode",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_G,
-            YEFIRA_CATEGORY
-        );
-
-        keyOpenGui = new KeyMapping(
-            "key.yefira.open_gui",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_O,
-            YEFIRA_CATEGORY
-        );
-
-        keyFocus = new KeyMapping(
-            "key.yefira.focus",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_V,
-            YEFIRA_CATEGORY
-        );
-
-        keyClear = new KeyMapping(
-            "key.yefira.clear",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_X,
-            YEFIRA_CATEGORY
-        );
-
-        keyPresetBox = new KeyMapping(
-            "key.yefira.preset_box",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_C,
-            YEFIRA_CATEGORY
-        );
+        IClientCompat compat = VersionCompat.client();
+        keyGhostMode = compat.createKeyMapping("key.yefira.ghost_mode", GLFW.GLFW_KEY_G);
+        keyOpenGui = compat.createKeyMapping("key.yefira.open_gui", GLFW.GLFW_KEY_O);
+        keyFocus = compat.createKeyMapping("key.yefira.focus", GLFW.GLFW_KEY_V);
+        keyClear = compat.createKeyMapping("key.yefira.clear", GLFW.GLFW_KEY_X);
+        keyPresetBox = compat.createKeyMapping("key.yefira.preset_box", GLFW.GLFW_KEY_C);
     }
 
     public static void onClientJoinServer(Minecraft client) {
@@ -83,7 +64,6 @@ public class YefiraClient {
             return;
         }
 
-        // Global shortcuts
         if (keyGhostMode != null) {
             while (keyGhostMode.consumeClick()) {
                 GhostModeManager.getInstance().toggle();
@@ -92,20 +72,17 @@ public class YefiraClient {
 
         if (keyOpenGui != null) {
             while (keyOpenGui.consumeClick()) {
-                client.setScreenAndShow(new YefiraScreen());
+                openConfigScreen(client);
             }
         }
 
-        // Shortcuts strictly active ONLY in Ghost Mode
         if (!GhostModeManager.getInstance().isActive()) {
-            // Drain any pending clicks to avoid accidental triggering on mode entry
             if (keyFocus != null) while (keyFocus.consumeClick()) {}
             if (keyClear != null) while (keyClear.consumeClick()) {}
             if (keyPresetBox != null) while (keyPresetBox.consumeClick()) {}
             return;
         }
 
-        // Ghost Mode active logic
         GhostModeManager.getInstance().tickMovement();
 
         if (keyFocus != null) {

@@ -2,6 +2,7 @@ package com.mozi1924.yefira.fabric.client;
 
 import com.mozi1924.yefira.Yefira;
 import com.mozi1924.yefira.client.YefiraClient;
+import com.mozi1924.yefira.client.compat.ClientCompat;
 import com.mozi1924.yefira.client.ghost.GhostGizmoRenderer;
 import com.mozi1924.yefira.client.ghost.GhostHudOverlay;
 import com.mozi1924.yefira.client.render.SelectionBoxRenderer;
@@ -16,7 +17,7 @@ public class YefiraClientFabric implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        YefiraClient.init();
+        YefiraClient.init(ClientCompat.INSTANCE);
         YefiraClient.createKeyMappings();
 
         // Register keymappings
@@ -28,13 +29,13 @@ public class YefiraClientFabric implements ClientModInitializer {
 
         // Register 3D Level Renderers (Selection box & Ghost gizmos)
         LevelRenderEvents.BEFORE_GIZMOS.register(context -> {
-            SelectionBoxRenderer.render();
-            GhostGizmoRenderer.render();
+            SelectionBoxRenderer.render(ClientCompat.RENDER_CONTEXT);
+            GhostGizmoRenderer.render(ClientCompat.RENDER_CONTEXT);
         });
 
         // Register Ghost Mode HUD Overlay
         HudElementRegistry.addLast(Yefira.id("ghost_hud"), (graphics, deltaTracker) -> {
-            GhostHudOverlay.renderOverlay(graphics);
+            GhostHudOverlay.renderOverlay(ClientCompat.wrapGui(graphics));
         });
 
         // Register Connection Lifecycle

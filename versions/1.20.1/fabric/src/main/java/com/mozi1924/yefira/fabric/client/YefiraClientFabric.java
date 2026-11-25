@@ -2,8 +2,11 @@ package com.mozi1924.yefira.fabric.client;
 
 import com.mozi1924.yefira.Yefira;
 import com.mozi1924.yefira.client.YefiraClient;
+import com.mozi1924.yefira.client.compat.ClientCompat;
+import com.mozi1924.yefira.client.compat.RenderCompat;
 import com.mozi1924.yefira.client.ghost.GhostGizmoRenderer;
 import com.mozi1924.yefira.client.ghost.GhostHudOverlay;
+import com.mozi1924.yefira.client.render.IRenderContext;
 import com.mozi1924.yefira.client.render.SelectionBoxRenderer;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -14,7 +17,7 @@ public class YefiraClientFabric implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        YefiraClient.init();
+        YefiraClient.init(ClientCompat.INSTANCE);
         YefiraClient.createKeyMappings();
 
         // Register keymappings
@@ -26,13 +29,14 @@ public class YefiraClientFabric implements ClientModInitializer {
 
         // Register 3D Level Renderers (Selection box & Ghost gizmos)
         net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> {
-            SelectionBoxRenderer.render(context.matrixStack(), context.consumers(), context.camera());
-            GhostGizmoRenderer.render(context.matrixStack(), context.consumers(), context.camera());
+            IRenderContext renderCtx = RenderCompat.createContext(context.matrixStack(), context.consumers(), context.camera());
+            SelectionBoxRenderer.render(renderCtx);
+            GhostGizmoRenderer.render(renderCtx);
         });
 
         // Register Ghost Mode HUD Overlay
         net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback.EVENT.register((graphics, deltaTracker) -> {
-            GhostHudOverlay.renderOverlay(graphics);
+            GhostHudOverlay.renderOverlay(RenderCompat.wrapGui(graphics));
         });
 
         // Register Connection Lifecycle

@@ -2,6 +2,7 @@ package com.mozi1924.yefira.neoforge.client;
 
 import com.mozi1924.yefira.Yefira;
 import com.mozi1924.yefira.client.YefiraClient;
+import com.mozi1924.yefira.client.compat.ClientCompat;
 import com.mozi1924.yefira.client.ghost.GhostGizmoRenderer;
 import com.mozi1924.yefira.client.ghost.GhostHudOverlay;
 import com.mozi1924.yefira.client.render.SelectionBoxRenderer;
@@ -21,12 +22,15 @@ public class YefiraClientNeoForge {
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
-        YefiraClient.init();
-        YefiraClient.createKeyMappings();
+        YefiraClient.init(ClientCompat.INSTANCE);
+        if (YefiraClient.keyGhostMode == null) {
+            YefiraClient.createKeyMappings();
+        }
     }
 
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
+        YefiraClient.init(ClientCompat.INSTANCE);
         if (YefiraClient.keyGhostMode == null) {
             YefiraClient.createKeyMappings();
         }
@@ -41,7 +45,7 @@ public class YefiraClientNeoForge {
     public static void onRegisterGuiLayers(RegisterGuiLayersEvent event) {
         event.registerAboveAll(
             Yefira.id("ghost_hud"),
-            (graphics, deltaTracker) -> GhostHudOverlay.renderOverlay(graphics)
+            (graphics, deltaTracker) -> GhostHudOverlay.renderOverlay(ClientCompat.wrapGui(graphics))
         );
     }
 
@@ -52,8 +56,8 @@ public class YefiraClientNeoForge {
 
     @SubscribeEvent
     public static void onExtractLevelRenderState(ExtractLevelRenderStateEvent event) {
-        SelectionBoxRenderer.render();
-        GhostGizmoRenderer.render();
+        SelectionBoxRenderer.render(ClientCompat.RENDER_CONTEXT);
+        GhostGizmoRenderer.render(ClientCompat.RENDER_CONTEXT);
     }
 
     @SubscribeEvent

@@ -125,14 +125,29 @@ def test_permission_null_guards():
         else:
             log_success("SelectionCommand in common-core has safe null check on source.getServer()")
 
+    base_screen_file = ROOT_DIR / "common-core/src/main/java/com/mozi1924/yefira/client/gui/YefiraScreenBase.java"
+    if not base_screen_file.exists():
+        log_error("Missing unified YefiraScreenBase in common-core")
+        passed = False
+    else:
+        screen_content = base_screen_file.read_text(encoding="utf-8")
+        if "SelectionBox sel = mgr.getCurrentSelection();" in screen_content and "if (sel != null" in screen_content:
+            log_success("YefiraScreenBase in common-core has thread-safe SelectionBox null guard")
+        else:
+            log_error("YefiraScreenBase missing race-condition check for getCurrentSelection()")
+            passed = False
+
     for ver in versions:
         screen_file = ROOT_DIR / f"versions/{ver}/common/src/main/java/com/mozi1924/yefira/client/gui/YefiraScreen.java"
-        if screen_file.exists():
+        if not screen_file.exists():
+            log_error(f"{ver} missing YefiraScreen wrapper")
+            passed = False
+        else:
             screen_content = screen_file.read_text(encoding="utf-8")
-            if "SelectionBox sel = mgr.getCurrentSelection();" in screen_content and "if (sel != null" in screen_content:
-                log_success(f"{ver} YefiraScreen has thread-safe SelectionBox null guard")
+            if "extends YefiraScreenBase" in screen_content:
+                log_success(f"{ver} YefiraScreen extends unified YefiraScreenBase")
             else:
-                log_error(f"{ver} YefiraScreen missing race-condition check for getCurrentSelection()")
+                log_error(f"{ver} YefiraScreen does not extend YefiraScreenBase")
                 passed = False
 
     return passed
@@ -156,17 +171,37 @@ def test_shared_architecture_abstractions():
         else:
             log_success("SelectionStyle provides authoritative styling constants")
 
-    # 2. CommonServerHooks and CommonClientHooks in common-core
+    # 2. CommonServerHooks, CommonClientHooks and unified YefiraClient in common-core
     server_hooks = ROOT_DIR / "common-core/src/main/java/com/mozi1924/yefira/compat/CommonServerHooks.java"
     client_hooks = ROOT_DIR / "common-core/src/main/java/com/mozi1924/yefira/compat/CommonClientHooks.java"
-    if not server_hooks.exists() or not client_hooks.exists():
-        log_error("Missing CommonServerHooks or CommonClientHooks in common-core")
+    core_client = ROOT_DIR / "common-core/src/main/java/com/mozi1924/yefira/client/YefiraClient.java"
+    cmd_file = ROOT_DIR / "common-core/src/main/java/com/mozi1924/yefira/command/SelectionCommand.java"
+    if not server_hooks.exists() or not client_hooks.exists() or not core_client.exists():
+        log_error("Missing CommonServerHooks, CommonClientHooks, or YefiraClient in common-core")
         passed = False
     else:
-        log_success("Common lifecycle hooks present in common-core")
+        yc_content = core_client.read_text(encoding="utf-8")
+        if "CommonClientHooks" not in yc_content:
+            log_error("common-core YefiraClient.java does not delegate to CommonClientHooks")
+            passed = False
+        else:
+            log_success("Common lifecycle hooks & unified YefiraClient present in common-core")
 
-    # 3. Check version delegation to common hooks
+    if cmd_file.exists() and '"setScreen"' in cmd_file.read_text(encoding="utf-8"):
+        log_error("SelectionCommand.java still uses brittle 'setScreen' reflection instead of CommonClientHooks")
+        passed = False
+
+    # 3. Check version delegation to common hooks and absence of duplicated client files
     versions = ["1.20.1", "1.20.4", "1.21.1", "1.21.4", "26.2"]
+    forbidden_version_files = [
+        "client/YefiraClient.java",
+        "client/ghost/GhostModeManager.java",
+        "client/ghost/GhostHudOverlay.java",
+        "client/ghost/GhostGizmoRenderer.java",
+        "client/render/SelectionBoxRenderer.java",
+        "client/compat/GuiCompat.java",
+        "client/compat/KeyMappingCompat.java",
+    ]
     for ver in versions:
         yefira_file = ROOT_DIR / f"versions/{ver}/common/src/main/java/com/mozi1924/yefira/Yefira.java"
         if yefira_file.exists():
@@ -177,14 +212,11 @@ def test_shared_architecture_abstractions():
             else:
                 log_success(f"{ver} Yefira.java delegates to CommonServerHooks")
 
-        yclient_file = ROOT_DIR / f"versions/{ver}/common/src/main/java/com/mozi1924/yefira/client/YefiraClient.java"
-        if yclient_file.exists():
-            yc_content = yclient_file.read_text(encoding="utf-8")
-            if "CommonClientHooks" not in yc_content:
-                log_error(f"{ver} YefiraClient.java does not delegate to CommonClientHooks")
+        for rel in forbidden_version_files:
+            dup_file = ROOT_DIR / f"versions/{ver}/common/src/main/java/com/mozi1924/yefira/{rel}"
+            if dup_file.exists():
+                log_error(f"{ver} still contains duplicated client file {rel} (must live in common-core / ClientCompat)")
                 passed = False
-            else:
-                log_success(f"{ver} YefiraClient.java delegates to CommonClientHooks")
 
     return passed
 

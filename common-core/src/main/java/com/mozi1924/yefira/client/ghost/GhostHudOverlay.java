@@ -1,16 +1,16 @@
 package com.mozi1924.yefira.client.ghost;
 
+import com.mozi1924.yefira.client.gui.IGuiDrawer;
 import com.mozi1924.yefira.network.WebSocketServerManager;
 import com.mozi1924.yefira.selection.SelectionBox;
 import com.mozi1924.yefira.selection.SelectionManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 
 public class GhostHudOverlay {
 
-    public static void renderOverlay(GuiGraphicsExtractor graphics) {
+    public static void renderOverlay(IGuiDrawer graphics) {
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (!ghost.isActive()) return;
 
@@ -18,23 +18,17 @@ public class GhostHudOverlay {
         Font font = mc.font;
         int screenWidth = mc.getWindow().getGuiScaledWidth();
 
-        // Top Status Bar
         int barHeight = 22;
-        graphics.fill(0, 0, screenWidth, barHeight, 0xB0000000); // 70% dark background
-        int accentColor = 0xFF00FFCC; // Cyan accent
+        graphics.fill(0, 0, screenWidth, barHeight, 0xB0000000);
+        int accentColor = 0xFF00FFCC;
         graphics.fill(0, barHeight - 1, screenWidth, barHeight, accentColor);
 
-        // Title
         Component titleComp = Component.translatable("yefira.hud.title.ghost");
-        int titleColor = 0xFF00FFFF;
-        graphics.text(font, titleComp, 8, 6, titleColor, true);
+        graphics.drawText(font, titleComp, 8, 6, 0xFF00FFFF, true);
 
-        // Control Hints
         Component hintsComp = Component.translatable("yefira.hud.hints.ghost");
-        graphics.centeredText(font, hintsComp, screenWidth / 2, 6, 0xFFE0E0E0);
+        graphics.drawCenteredText(font, hintsComp, screenWidth / 2, 6, 0xFFE0E0E0);
 
-        // Server Status & Fly Speed (top right). In multiplayer the DCC talks to
-        // the remote server, so the local server's state is irrelevant/misleading.
         boolean multi = mc.player != null && !mc.hasSingleplayerServer();
         boolean remoteServer = multi
                 && SelectionManager.getInstance().getSelectionSource()
@@ -52,9 +46,8 @@ public class GhostHudOverlay {
             statusColor = ws.isRunning() ? 0x55FF55 : 0xFF7777;
         }
         int statusWidth = font.width(serverStatusComp);
-        graphics.text(font, serverStatusComp, screenWidth - statusWidth - 8, 6, statusColor, true);
+        graphics.drawText(font, serverStatusComp, screenWidth - statusWidth - 8, 6, statusColor, true);
 
-        // Selection & Dragging details (bottom left)
         SelectionManager mgr = SelectionManager.getInstance();
         int bottomY = mc.getWindow().getGuiScaledHeight() - 25;
 
@@ -70,7 +63,7 @@ public class GhostHudOverlay {
                 int bgColor = oversized ? 0xDD550000 : 0xAA003300;
                 int textColor = oversized ? 0xFFFF4444 : 0xFF55FF55;
                 graphics.fill(6, bottomY - 3, 8 + font.width(dragInfo) + 4, bottomY + 11, bgColor);
-                graphics.text(font, dragInfo, 8, bottomY, textColor, true);
+                graphics.drawText(font, dragInfo, 8, bottomY, textColor, true);
             }
         } else {
             SelectionBox sel = mgr.getCurrentSelection();
@@ -86,11 +79,11 @@ public class GhostHudOverlay {
                 int bgColor = oversized ? 0xDD550000 : 0x88000000;
                 int textColor = oversized ? 0xFFFF4444 : 0xFF55FFFF;
                 graphics.fill(6, bottomY - 3, 8 + font.width(selInfo) + 4, bottomY + 11, bgColor);
-                graphics.text(font, selInfo, 8, bottomY, textColor, true);
+                graphics.drawText(font, selInfo, 8, bottomY, textColor, true);
             } else if (ghost.getHoveredBlockPos() != null) {
                 Component hoverInfo = Component.translatable("yefira.hud.hovered.block", ghost.getHoveredBlockPos().toShortString());
                 graphics.fill(6, bottomY - 3, 8 + font.width(hoverInfo) + 4, bottomY + 11, 0x88000000);
-                graphics.text(font, hoverInfo, 8, bottomY, 0xFFFFFF55, true);
+                graphics.drawText(font, hoverInfo, 8, bottomY, 0xFFFFFF55, true);
             }
         }
     }

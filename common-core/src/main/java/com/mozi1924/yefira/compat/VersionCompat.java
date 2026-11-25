@@ -7,6 +7,7 @@ package com.mozi1924.yefira.compat;
 public class VersionCompat {
 
     private static ILevelCompat levelCompat;
+    private static IClientCompat clientCompat;
 
     public static void setLevelCompat(ILevelCompat compat) {
         levelCompat = compat;
@@ -17,5 +18,16 @@ public class VersionCompat {
             throw new IllegalStateException("VersionCompat: ILevelCompat has not been initialized!");
         }
         return levelCompat;
+    }
+
+    public static void setClientCompat(IClientCompat compat) {
+        clientCompat = compat;
+    }
+
+    public static IClientCompat client() {
+        if (clientCompat == null) {
+            throw new IllegalStateException("VersionCompat: IClientCompat has not been initialized!");
+        }
+        return clientCompat;
     }
 }

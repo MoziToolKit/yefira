@@ -67,7 +67,7 @@ public class KeyboardHandlerMixin {
         // 4. Open Settings / Control Screen: keyOpenGui
         if (YefiraClient.keyOpenGui != null && YefiraClient.keyOpenGui.matches(keyEvent)) {
             if (action == GLFW.GLFW_PRESS) {
-                this.minecraft.setScreenAndShow(new com.mozi1924.yefira.client.gui.YefiraScreen());
+                YefiraClient.openConfigScreen(this.minecraft);
             }
             ci.cancel();
             return;

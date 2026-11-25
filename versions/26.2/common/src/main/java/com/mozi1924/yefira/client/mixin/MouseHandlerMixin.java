@@ -46,7 +46,7 @@ public class MouseHandlerMixin {
         }
         GhostModeManager ghost = GhostModeManager.getInstance();
         if (ghost.isActive()) {
-            ghost.onMouseButton(buttonInfo, action);
+            ghost.onMouseButton(buttonInfo.button(), action);
             ci.cancel();
         }
     }
