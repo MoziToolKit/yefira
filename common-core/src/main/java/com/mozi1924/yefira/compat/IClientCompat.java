@@ -4,9 +4,11 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.Checkbox;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
@@ -38,4 +40,8 @@ public interface IClientCompat {
             boolean initialValue,
             Consumer<Boolean> onValueChange
     );
+
+    void copyToClipboard(Minecraft mc, String text);
+
+    void attachPasswordMask(EditBox editBox, BooleanSupplier isMasked);
 }

@@ -87,11 +87,11 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     }
 
     public synchronized boolean isIpcRunning() {
-        return isRunning() && ipcActive;
+        return isRunning() && NativeSync.nativeServerIsIpcRunning(serverHandle);
     }
 
     public synchronized boolean isWsRunning() {
-        return isRunning() && wsActive;
+        return isRunning() && NativeSync.nativeServerIsWsRunning(serverHandle);
     }
 
     public synchronized String getIpcUrl() {
@@ -108,6 +108,14 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         return serverHandle != 0 ? NativeSync.nativeServerGetClientCount(serverHandle) : 0;
     }
 
+    public synchronized int getIpcClientCount() {
+        return serverHandle != 0 ? NativeSync.nativeServerGetIpcClientCount(serverHandle) : 0;
+    }
+
+    public synchronized int getWsClientCount() {
+        return serverHandle != 0 ? NativeSync.nativeServerGetWsClientCount(serverHandle) : 0;
+    }
+
     public String getLastStartError() {
         return lastStartError;
     }
@@ -122,7 +130,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         });
     }
 
-    private static boolean isLoopbackHost(String host) {
+    public static boolean isLoopbackHost(String host) {
         if (host == null || host.isBlank()) {
             return false;
         }
@@ -134,9 +142,15 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     }
 
     public synchronized boolean startIpcOnly(String worldName, String mcVersion, String loader, String dimension) {
-        if (isRunning()) {
+        if (isRunning() && isIpcRunning()) {
             updateInstanceMetadata(worldName, mcVersion, loader, dimension);
             return true;
+        }
+        if (isRunning()) {
+            // Upgrade a running WS-only handle to include IPC if needed.
+            boolean wasWs = isWsRunning();
+            stopServer();
+            return startServerInternal(true, wasWs, HOST, PORT, worldName, mcVersion, loader, dimension);
         }
         return startServerInternal(true, false, HOST, PORT, worldName, mcVersion, loader, dimension);
     }
@@ -146,24 +160,97 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     }
 
     public synchronized boolean startServer(String host, int port) {
-        if (isRunning() && wsActive) {
-            Yefira.LOGGER.info("WebSocket Server is already running on {}:{}", HOST, PORT);
+        lastStartError = null;
+        setHost(host);
+        setPort(port);
+
+        if (isWsRunning()) {
+            Yefira.LOGGER.info("WebSocket Server is already running on {}:{}", HOST, getPort());
             return true;
         }
-        if (isRunning() && !wsActive) {
-            // Upgrade an existing IPC-only server to IPC + WebSocket.
-            stopServer();
+
+        YefiraConfig cfg = YefiraConfig.getInstance();
+        String token = cfg.getAuthToken();
+        if (!isLoopbackHost(HOST) && (token == null || token.isBlank())) {
+            lastStartError = "Non-loopback host " + HOST + " requires an Auth Token.";
+            Yefira.LOGGER.error(
+                    "Refusing to bind WebSocket Server to non-loopback host {} without authToken. "
+                            + "Set /yefira config token <secret> or bind 127.0.0.1.",
+                    HOST
+            );
+            return false;
         }
+
+        if (isRunning()) {
+            // Attach WebSocket listener to the running IPC server without interrupting IPC clients.
+            NativeSync.nativeServerUpdateAuth(
+                    serverHandle,
+                    token,
+                    cfg.isAllowLoopbackWithoutToken(),
+                    cfg.isRequireTokenOnIpc()
+            );
+            if (!NativeSync.nativeServerStartWs(serverHandle, HOST, PORT)) {
+                lastStartError = "Failed to bind " + HOST + ":" + PORT + " (port in use or invalid host).";
+                Yefira.LOGGER.error("Failed to attach WebSocket listener on {}:{}", HOST, PORT);
+                return false;
+            }
+            this.wsActive = true;
+            Yefira.LOGGER.info("Native WebSocket Server started on {}:{} (IPC preserved)", HOST, getPort());
+            return true;
+        }
+
         return startServerInternal(
+                false,
                 true,
-                true,
-                host,
-                port,
+                HOST,
+                PORT,
                 currentWorldName,
                 currentMcVersion,
                 currentLoader,
                 currentDimension
         );
+    }
+
+    public synchronized void stopWs() {
+        if (!isRunning()) {
+            return;
+        }
+        if (isIpcRunning()) {
+            if (isWsRunning()) {
+                NativeSync.nativeServerStopWs(serverHandle);
+                this.wsActive = false;
+                Yefira.LOGGER.info("Native WebSocket Server stopped (local IPC remains active).");
+            }
+        } else {
+            stopServer();
+        }
+    }
+
+    public synchronized boolean restartWs(String host, int port) {
+        stopWs();
+        return startServer(host, port);
+    }
+
+    public synchronized boolean applyAuthConfig() {
+        lastStartError = null;
+        if (!isRunning()) {
+            return true;
+        }
+        YefiraConfig cfg = YefiraConfig.getInstance();
+        String token = cfg.getAuthToken();
+        if (isWsRunning() && !isLoopbackHost(HOST) && (token == null || token.isBlank())) {
+            stopWs();
+            lastStartError = "WebSocket stopped: non-loopback host " + HOST + " requires an Auth Token.";
+            Yefira.LOGGER.warn("{}", lastStartError);
+            return false;
+        }
+        NativeSync.nativeServerUpdateAuth(
+                serverHandle,
+                token,
+                cfg.isAllowLoopbackWithoutToken(),
+                cfg.isRequireTokenOnIpc()
+        );
+        return true;
     }
 
     public synchronized boolean startServerWithMetadata(
@@ -307,27 +394,11 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     }
 
     public synchronized boolean restartServer(String host, int port) {
-        stopServer();
-        return startServer(host, port);
+        return restartWs(host, port);
     }
 
     public synchronized boolean restartServer() {
-        stopServer();
-        return startServer(HOST, PORT);
-    }
-
-    public synchronized boolean restartPreservingMode() {
-        boolean wasIpc = ipcActive;
-        boolean wasWs = wsActive;
-        String world = currentWorldName;
-        String mcVer = currentMcVersion;
-        String loader = currentLoader;
-        String dim = currentDimension;
-        stopServer();
-        if (!wasIpc && !wasWs) {
-            return true;
-        }
-        return startServerInternal(wasIpc, wasWs, HOST, PORT, world, mcVer, loader, dim);
+        return restartWs(HOST, PORT);
     }
 
     public synchronized void stopServer() {

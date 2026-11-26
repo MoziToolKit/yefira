@@ -333,10 +333,10 @@ public class SelectionCommand {
     private static int serverStop(CommandContext<CommandSourceStack> ctx) {
         CommandSourceStack source = ctx.getSource();
         WebSocketServerManager server = WebSocketServerManager.getInstance();
-        if (!server.isRunning()) {
+        if (!server.isWsRunning()) {
             source.sendFailure(Component.translatable("yefira.command.server.not_running"));
         } else {
-            server.stopServer();
+            server.stopWs();
             source.sendSuccess(() -> Component.translatable("yefira.command.server.stopped"), true);
         }
         return 1;
@@ -346,7 +346,7 @@ public class SelectionCommand {
         CommandSourceStack source = ctx.getSource();
         WebSocketServerManager server = WebSocketServerManager.getInstance();
         YefiraConfig cfg = YefiraConfig.getInstance();
-        boolean started = server.restartServer(cfg.getHost(), cfg.getPort());
+        boolean started = server.restartWs(cfg.getHost(), cfg.getPort());
         if (!started) {
             String err = server.getLastStartError();
             source.sendFailure(err != null && !err.isBlank()
@@ -462,8 +462,7 @@ public class SelectionCommand {
         YefiraConfig.save();
         WebSocketServerManager server = WebSocketServerManager.getInstance();
         if (server.isRunning()) {
-            boolean restarted = server.restartPreservingMode();
-            if (!restarted) {
+            if (!server.applyAuthConfig()) {
                 String err = server.getLastStartError();
                 source.sendFailure(err != null && !err.isBlank()
                         ? Component.literal("§c[Yefira] " + err)
@@ -489,6 +488,7 @@ public class SelectionCommand {
         YefiraConfig cfg = YefiraConfig.getInstance();
         cfg.setAllowLoopbackWithoutToken(enabled);
         YefiraConfig.save();
+        WebSocketServerManager.getInstance().applyAuthConfig();
         source.sendSuccess(() -> Component.translatable("yefira.command.config.loopback_auth.set",
                 String.valueOf(enabled)), true);
         return 1;
@@ -507,10 +507,7 @@ public class SelectionCommand {
         YefiraConfig cfg = YefiraConfig.getInstance();
         cfg.setRequireTokenOnIpc(enabled);
         YefiraConfig.save();
-        WebSocketServerManager server = WebSocketServerManager.getInstance();
-        if (server.isRunning()) {
-            server.restartPreservingMode();
-        }
+        WebSocketServerManager.getInstance().applyAuthConfig();
         source.sendSuccess(() -> Component.translatable("yefira.command.config.ipc_token.set",
                 String.valueOf(enabled)), true);
         return 1;

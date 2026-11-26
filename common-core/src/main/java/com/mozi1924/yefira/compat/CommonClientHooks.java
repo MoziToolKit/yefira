@@ -66,6 +66,23 @@ public final class CommonClientHooks {
     }
 
     /**
+     * Ensures local IPC is active when switching back to local client export mode in multiplayer.
+     */
+    public static void ensureLocalIpcRunning(String serverIp, Level level) {
+        if (WebSocketServerManager.getInstance().isIpcRunning()) {
+            return;
+        }
+        String label = (serverIp != null && !serverIp.isBlank()) ? serverIp : "Multiplayer";
+        String dim = level != null ? VersionCompat.level().getDimensionId(level) : "minecraft:overworld";
+        WebSocketServerManager.getInstance().startIpcOnly(
+                label,
+                "",
+                Services.PLATFORM.getPlatformName(),
+                dim
+        );
+    }
+
+    /**
      * Common client disconnected from server handler.
      */
     public static void onClientDisconnect(boolean isSinglePlayer) {

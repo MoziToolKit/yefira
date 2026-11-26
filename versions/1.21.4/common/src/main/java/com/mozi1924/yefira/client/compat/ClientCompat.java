@@ -7,9 +7,13 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.Checkbox;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.util.FormattedCharSequence;
 
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 public final class ClientCompat implements IClientCompat {
@@ -74,5 +78,22 @@ public final class ClientCompat implements IClientCompat {
                     }
                 })
                 .build();
+    }
+
+    @Override
+    public void copyToClipboard(Minecraft mc, String text) {
+        if (mc != null && mc.keyboardHandler != null) {
+            mc.keyboardHandler.setClipboard(text != null ? text : "");
+        }
+    }
+
+    @Override
+    public void attachPasswordMask(EditBox editBox, BooleanSupplier isMasked) {
+        if (editBox != null) {
+            editBox.setFormatter((text, offset) ->
+                    isMasked != null && isMasked.getAsBoolean()
+                            ? FormattedCharSequence.forward("*".repeat(text.length()), Style.EMPTY)
+                            : FormattedCharSequence.forward(text, Style.EMPTY));
+        }
     }
 }

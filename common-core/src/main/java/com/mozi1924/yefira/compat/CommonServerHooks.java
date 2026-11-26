@@ -92,14 +92,16 @@ public final class CommonServerHooks {
         WebSocketServerManager manager = WebSocketServerManager.getInstance();
         if (!server.isDedicatedServer()) {
             // Singleplayer / Integrated server: always auto-start local IPC on world load.
-            boolean started = cfg.isAutoStartOnWorldLoad()
-                    ? manager.startServerWithMetadata(true, true, cfg.getHost(), cfg.getPort(), worldName, mcVersion, loader, dimension)
-                    : manager.startIpcOnly(worldName, mcVersion, loader, dimension);
-            if (!started) {
-                LOGGER.error("Sync server auto-start failed: {}", manager.getLastStartError());
+            boolean ipcStarted = manager.startIpcOnly(worldName, mcVersion, loader, dimension);
+            if (!ipcStarted) {
+                LOGGER.error("Local IPC auto-start failed: {}", manager.getLastStartError());
+            } else if (cfg.isAutoStartOnWorldLoad()) {
+                if (!manager.startServer(cfg.getHost(), cfg.getPort())) {
+                    LOGGER.error("WebSocket auto-start failed: {}", manager.getLastStartError());
+                }
             }
         } else if (cfg.isAutoStartOnWorldLoad()) {
-            boolean started = manager.startServerWithMetadata(true, true, cfg.getHost(), cfg.getPort(), worldName, mcVersion, loader, dimension);
+            boolean started = manager.startServerWithMetadata(false, true, cfg.getHost(), cfg.getPort(), worldName, mcVersion, loader, dimension);
             if (!started) {
                 LOGGER.error("WebSocket Server auto-start failed; check the configured host/port/auth token.");
             }

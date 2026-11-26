@@ -40,10 +40,19 @@ public class GhostHudOverlay {
             statusColor = 0x55FFFF;
         } else {
             WebSocketServerManager ws = WebSocketServerManager.getInstance();
-            serverStatusComp = ws.isRunning()
-                ? Component.translatable("yefira.hud.server.running", ws.getConnectedCount())
-                : Component.translatable("yefira.hud.server.stopped");
-            statusColor = ws.isRunning() ? 0x55FF55 : 0xFF7777;
+            if (ws.isIpcRunning() && ws.isWsRunning()) {
+                serverStatusComp = Component.translatable("yefira.hud.server.dual", ws.getConnectedCount());
+                statusColor = 0x55FF55;
+            } else if (ws.isIpcRunning()) {
+                serverStatusComp = Component.translatable("yefira.hud.server.ipc", ws.getIpcClientCount());
+                statusColor = 0x55FF55;
+            } else if (ws.isWsRunning()) {
+                serverStatusComp = Component.translatable("yefira.hud.server.running", ws.getWsClientCount());
+                statusColor = 0x55FF55;
+            } else {
+                serverStatusComp = Component.translatable("yefira.hud.server.stopped");
+                statusColor = 0xFF7777;
+            }
         }
         int statusWidth = font.width(serverStatusComp);
         graphics.drawText(font, serverStatusComp, screenWidth - statusWidth - 8, 6, statusColor, true);

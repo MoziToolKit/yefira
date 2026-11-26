@@ -17,8 +17,12 @@ public class ConfigTest {
         Assertions.assertEquals(21924, config.getPort());
         Assertions.assertFalse(config.isAutoStartOnWorldLoad());
         Assertions.assertEquals("", config.getAuthToken());
-        Assertions.assertFalse(config.isAllowLoopbackWithoutToken());
+        Assertions.assertTrue(config.isAllowLoopbackWithoutToken());
         Assertions.assertFalse(config.isRequireTokenOnIpc());
+
+        String generated = YefiraConfig.generateRandomToken();
+        Assertions.assertNotNull(generated);
+        Assertions.assertEquals(24, generated.length());
 
         config.setRequireTokenOnIpc(true);
         Assertions.assertTrue(config.isRequireTokenOnIpc());

@@ -405,4 +405,37 @@ public class WebSocketIntegrationTest {
         Assertions.assertEquals(0, WebSocketServerManager.getInstance().getConnectedCount());
         client.close();
     }
+
+    @Test
+    public void testDecoupledWsStartAndStopPreservesIpc() throws Exception {
+        WebSocketServerManager server = WebSocketServerManager.getInstance();
+        server.stopServer();
+        YefiraConfig cfg = YefiraConfig.getInstance();
+        String previousToken = cfg.getAuthToken();
+        boolean previousBypass = cfg.isAllowLoopbackWithoutToken();
+        cfg.setAuthToken("");
+        cfg.setAllowLoopbackWithoutToken(true);
+
+        try {
+            Assertions.assertTrue(server.startIpcOnly("TestWorld", "1.21.4", "Fabric", "minecraft:overworld"));
+            Assertions.assertTrue(server.isIpcRunning());
+            Assertions.assertFalse(server.isWsRunning());
+            String ipcUrl = server.getIpcUrl();
+            Assertions.assertNotNull(ipcUrl);
+
+            Assertions.assertTrue(server.startServer(TEST_HOST, 18771));
+            Assertions.assertTrue(server.isIpcRunning());
+            Assertions.assertTrue(server.isWsRunning());
+            Assertions.assertEquals(ipcUrl, server.getIpcUrl(), "Attaching WS must preserve the same IPC endpoint");
+
+            server.stopWs();
+            Assertions.assertFalse(server.isWsRunning());
+            Assertions.assertTrue(server.isIpcRunning(), "Stopping WS must preserve local IPC");
+            Assertions.assertEquals(ipcUrl, server.getIpcUrl());
+        } finally {
+            cfg.setAuthToken(previousToken);
+            cfg.setAllowLoopbackWithoutToken(previousBypass);
+            server.stopServer();
+        }
+    }
 }

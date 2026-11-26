@@ -9,9 +9,12 @@ import com.mozi1924.yefira.platform.Services;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 
 public class YefiraConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final String TOKEN_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    private static final SecureRandom TOKEN_RNG = new SecureRandom();
 
     private static Path getConfigPath() {
         try {
@@ -34,11 +37,11 @@ public class YefiraConfig {
     private int maxSideSoftLimit = 256;        // Default 256 max single side length
     private String authToken = "";
     /**
-     * When true and the server is bound to a loopback address, clients may
-     * connect without presenting authToken. This is convenient for a purely
-     * local Blender connection while keeping non-loopback binds token-gated.
+     * When true and the client connects from a loopback address, clients may
+     * connect without presenting authToken. Enabled by default so local
+     * connections work seamlessly while non-loopback binds remain token-gated.
      */
-    private boolean allowLoopbackWithoutToken = false;
+    private boolean allowLoopbackWithoutToken = true;
     /**
      * When true, local IPC connections must also present authToken during HELLO.
      * Off by default so local singleplayer sync works seamlessly out of the box.
@@ -199,5 +202,13 @@ public class YefiraConfig {
 
     public void setRequireTokenOnIpc(boolean requireTokenOnIpc) {
         this.requireTokenOnIpc = requireTokenOnIpc;
+    }
+
+    public static String generateRandomToken() {
+        StringBuilder sb = new StringBuilder(24);
+        for (int i = 0; i < 24; i++) {
+            sb.append(TOKEN_ALPHABET.charAt(TOKEN_RNG.nextInt(TOKEN_ALPHABET.length())));
+        }
+        return sb.toString();
     }
 }

@@ -151,6 +151,19 @@ public class NativeSyncTest {
 
             NativeSync.nativeServerUpdateMetadata(handle, "JavaTestWorld", "1.21.4", "Fabric", "minecraft:the_nether");
             assertNotNull(NativeSync.nativeServerPollEvents(handle));
+
+            assertTrue(NativeSync.nativeServerIsIpcRunning(handle));
+            assertFalse(NativeSync.nativeServerIsWsRunning(handle));
+
+            assertTrue(NativeSync.nativeServerStartWs(handle, "127.0.0.1", 0));
+            assertTrue(NativeSync.nativeServerIsWsRunning(handle));
+            assertTrue(NativeSync.nativeServerGetPort(handle) > 0);
+
+            NativeSync.nativeServerUpdateAuth(handle, "secret", false, false);
+            NativeSync.nativeServerStopWs(handle);
+            assertFalse(NativeSync.nativeServerIsWsRunning(handle));
+            assertTrue(NativeSync.nativeServerIsIpcRunning(handle), "IPC must remain active after stopping WS");
+            assertEquals(0, NativeSync.nativeServerGetPort(handle));
         } finally {
             NativeSync.nativeServerStop(handle);
         }

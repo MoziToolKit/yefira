@@ -12,14 +12,18 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Checkbox;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.gizmos.GizmoProperties;
 import net.minecraft.gizmos.GizmoStyle;
 import net.minecraft.gizmos.Gizmos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 public final class ClientCompat implements IClientCompat {
@@ -131,5 +135,22 @@ public final class ClientCompat implements IClientCompat {
                     }
                 })
                 .build();
+    }
+
+    @Override
+    public void copyToClipboard(Minecraft mc, String text) {
+        if (mc != null && mc.keyboardHandler != null) {
+            mc.keyboardHandler.setClipboard(text != null ? text : "");
+        }
+    }
+
+    @Override
+    public void attachPasswordMask(EditBox editBox, BooleanSupplier isMasked) {
+        if (editBox != null) {
+            editBox.addFormatter((text, offset) ->
+                    isMasked != null && isMasked.getAsBoolean()
+                            ? FormattedCharSequence.forward("*".repeat(text.length()), Style.EMPTY)
+                            : FormattedCharSequence.forward(text, Style.EMPTY));
+        }
     }
 }

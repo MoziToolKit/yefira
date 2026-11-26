@@ -190,7 +190,17 @@ public final class NativeSync {
             boolean allowLoopback
     );
     public static native void nativeServerStop(long handle);
+    public static native boolean nativeServerStartWs(long handle, String host, int port);
+    public static native void nativeServerStopWs(long handle);
     public static native boolean nativeServerIsRunning(long handle);
+    public static native boolean nativeServerIsIpcRunning(long handle);
+    public static native boolean nativeServerIsWsRunning(long handle);
+    public static native void nativeServerUpdateAuth(
+            long handle,
+            String token,
+            boolean allowLoopback,
+            boolean requireTokenOnIpc
+    );
     public static native int nativeServerGetPort(long handle);
     public static native String nativeServerGetIpcUrl(long handle);
     public static native void nativeServerUpdateMetadata(
@@ -201,6 +211,8 @@ public final class NativeSync {
             String dimension
     );
     public static native int nativeServerGetClientCount(long handle);
+    public static native int nativeServerGetIpcClientCount(long handle);
+    public static native int nativeServerGetWsClientCount(long handle);
     public static native void nativeServerSetSelection(
             long handle,
             int minX, int minY, int minZ,
