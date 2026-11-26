@@ -176,10 +176,30 @@ public final class NativeSync {
         }
     }
 
-    public static native long nativeServerStart(String host, int port, String token, boolean allowLoopback);
+    public static native long nativeServerStart(
+            boolean enableIpc,
+            String worldName,
+            String mcVersion,
+            String loader,
+            String dimension,
+            boolean requireTokenOnIpc,
+            boolean enableWs,
+            String host,
+            int port,
+            String token,
+            boolean allowLoopback
+    );
     public static native void nativeServerStop(long handle);
     public static native boolean nativeServerIsRunning(long handle);
     public static native int nativeServerGetPort(long handle);
+    public static native String nativeServerGetIpcUrl(long handle);
+    public static native void nativeServerUpdateMetadata(
+            long handle,
+            String worldName,
+            String mcVersion,
+            String loader,
+            String dimension
+    );
     public static native int nativeServerGetClientCount(long handle);
     public static native void nativeServerSetSelection(
             long handle,

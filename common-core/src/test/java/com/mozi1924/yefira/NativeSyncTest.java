@@ -37,7 +37,10 @@ public class NativeSyncTest {
     public void testNativeServerSubmitBaselineAndDeltas() {
         assertTrue(NativeSync.isAvailable());
 
-        long handle = NativeSync.nativeServerStart("127.0.0.1", 0, null, true);
+        long handle = NativeSync.nativeServerStart(
+                false, "", "", "", "minecraft:overworld", false,
+                true, "127.0.0.1", 0, null, true
+        );
         assertNotEquals(0L, handle, "Native server must start and return non-zero handle");
 
         try {
@@ -93,7 +96,10 @@ public class NativeSyncTest {
     public void testNativeServerLifecycle() {
         assertTrue(NativeSync.isAvailable());
 
-        long handle = NativeSync.nativeServerStart("127.0.0.1", 0, null, true);
+        long handle = NativeSync.nativeServerStart(
+                false, "", "", "", "minecraft:overworld", false,
+                true, "127.0.0.1", 0, null, true
+        );
         assertNotEquals(0L, handle, "Native server must start and return non-zero handle");
 
         assertTrue(NativeSync.nativeServerIsRunning(handle));
@@ -114,7 +120,10 @@ public class NativeSyncTest {
         assertTrue(NativeSync.isAvailable());
         assertNull(NativeSync.nativeServerPollEvents(0L));
 
-        long handle = NativeSync.nativeServerStart("127.0.0.1", 0, null, true);
+        long handle = NativeSync.nativeServerStart(
+                false, "", "", "", "minecraft:overworld", false,
+                true, "127.0.0.1", 0, null, true
+        );
         assertNotEquals(0L, handle, "Native server must start and return non-zero handle");
         assertNotNull(NativeSync.nativeServerPollEvents(handle));
 
@@ -122,5 +131,28 @@ public class NativeSyncTest {
         assertFalse(NativeSync.nativeServerIsRunning(handle));
         assertNull(NativeSync.nativeServerPollEvents(handle));
         NativeSync.nativeServerStop(handle);
+    }
+
+    @Test
+    public void testNativeServerIpcOnlyLifecycleAndMetadata() {
+        assertTrue(NativeSync.isAvailable());
+
+        long handle = NativeSync.nativeServerStart(
+                true, "JavaTestWorld", "1.21.4", "Fabric", "minecraft:overworld", false,
+                false, "127.0.0.1", 0, null, true
+        );
+        assertNotEquals(0L, handle, "IPC-only native server must start cleanly");
+        try {
+            assertTrue(NativeSync.nativeServerIsRunning(handle));
+            assertEquals(0, NativeSync.nativeServerGetPort(handle), "IPC-only server must not bind any TCP port");
+            String ipcUrl = NativeSync.nativeServerGetIpcUrl(handle);
+            assertNotNull(ipcUrl);
+            assertTrue(ipcUrl.startsWith("ipc://"), "Expected ipc:// URL, got: " + ipcUrl);
+
+            NativeSync.nativeServerUpdateMetadata(handle, "JavaTestWorld", "1.21.4", "Fabric", "minecraft:the_nether");
+            assertNotNull(NativeSync.nativeServerPollEvents(handle));
+        } finally {
+            NativeSync.nativeServerStop(handle);
+        }
     }
 }

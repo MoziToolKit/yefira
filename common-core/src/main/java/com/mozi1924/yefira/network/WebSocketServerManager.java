@@ -29,7 +29,7 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
 
     private static final WebSocketServerManager INSTANCE = new WebSocketServerManager();
     private static String HOST = "127.0.0.1";
-    private static int PORT = 8765;
+    private static int PORT = 21924;
 
     private static final int MAX_PENDING_DELTA_CHANGES = 262_144;
     private static final long CLIENT_SCAN_TIMEOUT_MILLIS = 30_000L;
@@ -37,6 +37,13 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
             TimeUnit.MILLISECONDS.toSeconds(CanonicalVoxelScanner.DEFAULT_MAX_SCAN_MILLIS) + 10L;
 
     private volatile long serverHandle = 0;
+    private volatile boolean ipcActive = false;
+    private volatile boolean wsActive = false;
+    private volatile String currentIpcUrl = null;
+    private volatile String currentWorldName = "";
+    private volatile String currentMcVersion = "";
+    private volatile String currentLoader = "";
+    private volatile String currentDimension = "minecraft:overworld";
     private volatile String lastStartError = null;
     private volatile Thread eventPollerThread;
     private volatile ExecutorService streamingExecutor = createStreamingExecutor();
@@ -79,6 +86,24 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         return serverHandle != 0 && NativeSync.nativeServerIsRunning(serverHandle);
     }
 
+    public synchronized boolean isIpcRunning() {
+        return isRunning() && ipcActive;
+    }
+
+    public synchronized boolean isWsRunning() {
+        return isRunning() && wsActive;
+    }
+
+    public synchronized String getIpcUrl() {
+        if (!isIpcRunning()) {
+            return null;
+        }
+        if (currentIpcUrl == null) {
+            currentIpcUrl = NativeSync.nativeServerGetIpcUrl(serverHandle);
+        }
+        return currentIpcUrl;
+    }
+
     public synchronized int getConnectedCount() {
         return serverHandle != 0 ? NativeSync.nativeServerGetClientCount(serverHandle) : 0;
     }
@@ -108,32 +133,94 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         }
     }
 
+    public synchronized boolean startIpcOnly(String worldName, String mcVersion, String loader, String dimension) {
+        if (isRunning()) {
+            updateInstanceMetadata(worldName, mcVersion, loader, dimension);
+            return true;
+        }
+        return startServerInternal(true, false, HOST, PORT, worldName, mcVersion, loader, dimension);
+    }
+
     public synchronized boolean startServer() {
         return startServer(HOST, PORT);
     }
 
     public synchronized boolean startServer(String host, int port) {
-        if (isRunning()) {
+        if (isRunning() && wsActive) {
             Yefira.LOGGER.info("WebSocket Server is already running on {}:{}", HOST, PORT);
             return true;
         }
+        if (isRunning() && !wsActive) {
+            // Upgrade an existing IPC-only server to IPC + WebSocket.
+            stopServer();
+        }
+        return startServerInternal(
+                true,
+                true,
+                host,
+                port,
+                currentWorldName,
+                currentMcVersion,
+                currentLoader,
+                currentDimension
+        );
+    }
+
+    public synchronized boolean startServerWithMetadata(
+            boolean enableIpc,
+            boolean enableWs,
+            String host,
+            int port,
+            String worldName,
+            String mcVersion,
+            String loader,
+            String dimension
+    ) {
+        if (isRunning()) {
+            stopServer();
+        }
+        return startServerInternal(enableIpc, enableWs, host, port, worldName, mcVersion, loader, dimension);
+    }
+
+    private synchronized boolean startServerInternal(
+            boolean enableIpc,
+            boolean enableWs,
+            String host,
+            int port,
+            String worldName,
+            String mcVersion,
+            String loader,
+            String dimension
+    ) {
         lastStartError = null;
-        setHost(host);
-        setPort(port);
+        if (enableWs) {
+            setHost(host);
+            setPort(port);
+        }
+        this.currentWorldName = worldName != null ? worldName : "";
+        this.currentMcVersion = mcVersion != null ? mcVersion : "";
+        this.currentLoader = loader != null ? loader : "";
+        this.currentDimension = (dimension != null && !dimension.isBlank()) ? dimension : "minecraft:overworld";
+
+        if (!enableIpc && !enableWs) {
+            lastStartError = "Neither IPC nor WebSocket transport is enabled.";
+            return false;
+        }
 
         if (!NativeSync.isAvailable()) {
             Throwable loadErr = NativeSync.getLoadError();
             String reason = loadErr != null ? loadErr.getMessage() : "native library not loaded";
             lastStartError = "Native mtk_jni unavailable (" + reason + ")";
-            Yefira.LOGGER.error("Cannot start WebSocket Server: {}", lastStartError, loadErr);
+            Yefira.LOGGER.error("Cannot start Sync Server: {}", lastStartError, loadErr);
             return false;
         }
 
         YefiraConfig cfg = YefiraConfig.getInstance();
         String token = cfg.getAuthToken();
         boolean allowLoopback = cfg.isAllowLoopbackWithoutToken();
+        boolean requireTokenOnIpc = cfg.isRequireTokenOnIpc();
 
-        if (!isLoopbackHost(HOST) && (token == null || token.isBlank())) {
+        if (enableWs && !isLoopbackHost(HOST) && (token == null || token.isBlank())) {
             lastStartError = "Non-loopback host " + HOST + " requires an Auth Token.";
             Yefira.LOGGER.error(
                     "Refusing to bind WebSocket Server to non-loopback host {} without authToken. "
@@ -144,12 +231,30 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         }
 
         try {
-            serverHandle = NativeSync.nativeServerStart(HOST, PORT, token, allowLoopback);
+            serverHandle = NativeSync.nativeServerStart(
+                    enableIpc,
+                    this.currentWorldName,
+                    this.currentMcVersion,
+                    this.currentLoader,
+                    this.currentDimension,
+                    requireTokenOnIpc,
+                    enableWs,
+                    HOST,
+                    PORT,
+                    token,
+                    allowLoopback
+            );
             if (serverHandle == 0) {
-                lastStartError = "Failed to bind " + HOST + ":" + PORT + " (port in use or invalid host).";
-                Yefira.LOGGER.error("Native WebSocket Server failed to bind {}:{}", HOST, PORT);
+                lastStartError = enableWs
+                        ? "Failed to bind " + HOST + ":" + PORT + " (port in use or invalid host)."
+                        : "Failed to start local IPC listener.";
+                Yefira.LOGGER.error("Native Sync Server failed to start (ipc={}, ws={}:{})", enableIpc, HOST, PORT);
                 return false;
             }
+
+            this.ipcActive = enableIpc;
+            this.wsActive = enableWs;
+            this.currentIpcUrl = enableIpc ? NativeSync.nativeServerGetIpcUrl(serverHandle) : null;
 
             eventPollerThread = new Thread(this::pollNativeEventsLoop, "Yefira-NativeServer-Events");
             eventPollerThread.setDaemon(true);
@@ -161,13 +266,43 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                 onSelectionChanged(sm.getCurrentLevel(), sm.getCurrentSelection());
             }
 
-            Yefira.LOGGER.info("Native WebSocket Server started on {}:{}", HOST, getPort());
+            if (enableWs && enableIpc) {
+                Yefira.LOGGER.info("Native Sync Server started (IPC: {}, WS: {}:{})", currentIpcUrl, HOST, getPort());
+            } else if (enableIpc) {
+                Yefira.LOGGER.info("Native Local IPC Server started ({})", currentIpcUrl);
+            } else {
+                Yefira.LOGGER.info("Native WebSocket Server started on {}:{}", HOST, getPort());
+            }
             return true;
         } catch (Throwable t) {
             lastStartError = t.getClass().getSimpleName() + (t.getMessage() != null ? ": " + t.getMessage() : "");
-            Yefira.LOGGER.error("Failed to start native WebSocket Server on " + HOST + ":" + PORT, t);
+            Yefira.LOGGER.error("Failed to start native Sync Server", t);
             stopServer();
             return false;
+        }
+    }
+
+    public synchronized void updateInstanceMetadata(String worldName, String mcVersion, String loader, String dimension) {
+        if (worldName != null) {
+            this.currentWorldName = worldName;
+        }
+        if (mcVersion != null) {
+            this.currentMcVersion = mcVersion;
+        }
+        if (loader != null) {
+            this.currentLoader = loader;
+        }
+        if (dimension != null && !dimension.isBlank()) {
+            this.currentDimension = dimension;
+        }
+        if (serverHandle != 0 && isIpcRunning()) {
+            NativeSync.nativeServerUpdateMetadata(
+                    serverHandle,
+                    this.currentWorldName,
+                    this.currentMcVersion,
+                    this.currentLoader,
+                    this.currentDimension
+            );
         }
     }
 
@@ -179,6 +314,20 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
     public synchronized boolean restartServer() {
         stopServer();
         return startServer(HOST, PORT);
+    }
+
+    public synchronized boolean restartPreservingMode() {
+        boolean wasIpc = ipcActive;
+        boolean wasWs = wsActive;
+        String world = currentWorldName;
+        String mcVer = currentMcVersion;
+        String loader = currentLoader;
+        String dim = currentDimension;
+        stopServer();
+        if (!wasIpc && !wasWs) {
+            return true;
+        }
+        return startServerInternal(wasIpc, wasWs, HOST, PORT, world, mcVer, loader, dim);
     }
 
     public synchronized void stopServer() {
@@ -203,6 +352,9 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
                 Yefira.LOGGER.error("Error stopping native WebSocket Server", e);
             } finally {
                 serverHandle = 0;
+                ipcActive = false;
+                wsActive = false;
+                currentIpcUrl = null;
             }
         }
     }
@@ -255,6 +407,8 @@ public class WebSocketServerManager implements SelectionManager.SelectionChangeL
         if (serverHandle == 0 || !isRunning() || level == null || selection == null) {
             return;
         }
+        String dim = VersionCompat.level().getDimensionId(level);
+        updateInstanceMetadata(null, null, null, dim);
         clearPendingDeltaChanges();
         broadcastBaseline(level, selection);
     }

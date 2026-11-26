@@ -3,6 +3,7 @@ package com.mozi1924.yefira.compat;
 import com.mozi1924.yefira.config.YefiraConfig;
 import com.mozi1924.yefira.network.GhostAnchorManager;
 import com.mozi1924.yefira.network.WebSocketServerManager;
+import com.mozi1924.yefira.platform.Services;
 import com.mozi1924.yefira.selection.SelectionManager;
 import com.mozi1924.yefira.selection.SelectionStorageManager;
 import net.minecraft.server.MinecraftServer;
@@ -78,13 +79,32 @@ public final class CommonServerHooks {
         }
 
         YefiraConfig cfg = YefiraConfig.getInstance();
-        if (cfg.isAutoStartOnWorldLoad()) {
-            boolean started = WebSocketServerManager.getInstance().startServer(cfg.getHost(), cfg.getPort());
+        Path normalizedWorld = worldDir.normalize();
+        String worldName = normalizedWorld.getFileName() != null
+                ? normalizedWorld.getFileName().toString()
+                : "World";
+        String mcVersion = server.getServerVersion() != null ? server.getServerVersion() : "";
+        String loader = Services.PLATFORM.getPlatformName();
+        String dimension = level != null
+                ? VersionCompat.level().getDimensionId(level)
+                : "minecraft:overworld";
+
+        WebSocketServerManager manager = WebSocketServerManager.getInstance();
+        if (!server.isDedicatedServer()) {
+            // Singleplayer / Integrated server: always auto-start local IPC on world load.
+            boolean started = cfg.isAutoStartOnWorldLoad()
+                    ? manager.startServerWithMetadata(true, true, cfg.getHost(), cfg.getPort(), worldName, mcVersion, loader, dimension)
+                    : manager.startIpcOnly(worldName, mcVersion, loader, dimension);
+            if (!started) {
+                LOGGER.error("Sync server auto-start failed: {}", manager.getLastStartError());
+            }
+        } else if (cfg.isAutoStartOnWorldLoad()) {
+            boolean started = manager.startServerWithMetadata(true, true, cfg.getHost(), cfg.getPort(), worldName, mcVersion, loader, dimension);
             if (!started) {
                 LOGGER.error("WebSocket Server auto-start failed; check the configured host/port/auth token.");
             }
         } else {
-            LOGGER.info("WebSocket Server auto-start is disabled (on-demand mode).");
+            LOGGER.info("WebSocket Server auto-start is disabled on dedicated server (on-demand mode).");
         }
     }
 

@@ -1,6 +1,7 @@
 package com.mozi1924.yefira.compat;
 
 import com.mozi1924.yefira.network.WebSocketServerManager;
+import com.mozi1924.yefira.platform.Services;
 import com.mozi1924.yefira.selection.SelectionManager;
 import com.mozi1924.yefira.selection.SelectionStorageManager;
 import net.minecraft.world.level.Level;
@@ -50,9 +51,17 @@ public final class CommonClientHooks {
                     LOGGER.info("Loaded server selection for IP: {}", serverIp);
                 }
             }
+            String label = (serverIp != null && !serverIp.isBlank()) ? serverIp : "Multiplayer";
+            String dim = level != null ? VersionCompat.level().getDimensionId(level) : "minecraft:overworld";
+            WebSocketServerManager.getInstance().startIpcOnly(
+                    label,
+                    "",
+                    Services.PLATFORM.getPlatformName(),
+                    dim
+            );
             LOGGER.info(
-                "Remote server detected; local WebSocket auto-start is disabled. "
-                    + "Start it from the GUI for local export, or connect the DCC to the server's endpoint.");
+                "Remote server detected; local IPC started for local export. "
+                    + "For remote server selection, switch mode in the Yefira GUI or connect the DCC to the server's WebSocket.");
         }
     }
 

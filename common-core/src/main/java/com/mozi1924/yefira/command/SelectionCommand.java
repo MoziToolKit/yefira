@@ -117,7 +117,11 @@ public class SelectionCommand {
                 .then(Commands.literal("loopback_auth")
                     .executes(SelectionCommand::showConfigLoopbackAuth)
                     .then(Commands.argument("enabled", BoolArgumentType.bool())
-                        .executes(ctx -> setConfigLoopbackAuth(ctx, BoolArgumentType.getBool(ctx, "enabled"))))))
+                        .executes(ctx -> setConfigLoopbackAuth(ctx, BoolArgumentType.getBool(ctx, "enabled")))))
+                .then(Commands.literal("ipc_token")
+                    .executes(SelectionCommand::showConfigIpcToken)
+                    .then(Commands.argument("enabled", BoolArgumentType.bool())
+                        .executes(ctx -> setConfigIpcToken(ctx, BoolArgumentType.getBool(ctx, "enabled"))))))
 
             // Direct shortcuts matching GUI fields
             .then(Commands.literal("host")
@@ -310,7 +314,7 @@ public class SelectionCommand {
         CommandSourceStack source = ctx.getSource();
         WebSocketServerManager server = WebSocketServerManager.getInstance();
         YefiraConfig cfg = YefiraConfig.getInstance();
-        if (server.isRunning()) {
+        if (server.isWsRunning()) {
             source.sendFailure(Component.translatable("yefira.command.server.already_running", server.getHost(), server.getPort()));
         } else {
             boolean started = server.startServer(cfg.getHost(), cfg.getPort());
@@ -357,9 +361,12 @@ public class SelectionCommand {
     private static int serverStatus(CommandContext<CommandSourceStack> ctx) {
         CommandSourceStack source = ctx.getSource();
         WebSocketServerManager server = WebSocketServerManager.getInstance();
-        if (server.isRunning()) {
+        if (server.isWsRunning()) {
             source.sendSuccess(() -> Component.translatable("yefira.command.server.status.running",
                     server.getHost(), server.getPort(), server.getConnectedCount()), false);
+        } else if (server.isIpcRunning()) {
+            source.sendSuccess(() -> Component.translatable("yefira.command.server.status.ipc",
+                    server.getConnectedCount()), false);
         } else {
             source.sendSuccess(() -> Component.translatable("yefira.command.server.status.stopped"), false);
         }
@@ -455,7 +462,7 @@ public class SelectionCommand {
         YefiraConfig.save();
         WebSocketServerManager server = WebSocketServerManager.getInstance();
         if (server.isRunning()) {
-            boolean restarted = server.restartServer(cfg.getHost(), cfg.getPort());
+            boolean restarted = server.restartPreservingMode();
             if (!restarted) {
                 String err = server.getLastStartError();
                 source.sendFailure(err != null && !err.isBlank()
@@ -483,6 +490,28 @@ public class SelectionCommand {
         cfg.setAllowLoopbackWithoutToken(enabled);
         YefiraConfig.save();
         source.sendSuccess(() -> Component.translatable("yefira.command.config.loopback_auth.set",
+                String.valueOf(enabled)), true);
+        return 1;
+    }
+
+    private static int showConfigIpcToken(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        YefiraConfig cfg = YefiraConfig.getInstance();
+        source.sendSuccess(() -> Component.translatable("yefira.command.config.ipc_token.set",
+                String.valueOf(cfg.isRequireTokenOnIpc())), false);
+        return 1;
+    }
+
+    private static int setConfigIpcToken(CommandContext<CommandSourceStack> ctx, boolean enabled) {
+        CommandSourceStack source = ctx.getSource();
+        YefiraConfig cfg = YefiraConfig.getInstance();
+        cfg.setRequireTokenOnIpc(enabled);
+        YefiraConfig.save();
+        WebSocketServerManager server = WebSocketServerManager.getInstance();
+        if (server.isRunning()) {
+            server.restartPreservingMode();
+        }
+        source.sendSuccess(() -> Component.translatable("yefira.command.config.ipc_token.set",
                 String.valueOf(enabled)), true);
         return 1;
     }

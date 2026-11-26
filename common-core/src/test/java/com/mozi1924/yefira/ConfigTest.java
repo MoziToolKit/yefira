@@ -14,10 +14,16 @@ public class ConfigTest {
         YefiraConfig config = new YefiraConfig();
 
         Assertions.assertEquals("127.0.0.1", config.getHost());
-        Assertions.assertEquals(8765, config.getPort());
+        Assertions.assertEquals(21924, config.getPort());
         Assertions.assertFalse(config.isAutoStartOnWorldLoad());
         Assertions.assertEquals("", config.getAuthToken());
         Assertions.assertFalse(config.isAllowLoopbackWithoutToken());
+        Assertions.assertFalse(config.isRequireTokenOnIpc());
+
+        config.setRequireTokenOnIpc(true);
+        Assertions.assertTrue(config.isRequireTokenOnIpc());
+        config.setRequireTokenOnIpc(false);
+        Assertions.assertFalse(config.isRequireTokenOnIpc());
 
         config.setHost("127.0.0.1");
         Assertions.assertEquals("127.0.0.1", config.getHost());

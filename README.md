@@ -299,15 +299,17 @@ yefira/
 ```json
 {
   "host": "127.0.0.1",
-  "port": 8765,
+  "port": 21924,
   "autoStartOnWorldLoad": false,
+  "requireTokenOnIpc": false,
   "authToken": "",
   "allowLoopbackWithoutToken": false
 }
 ```
 
 * `host`: WebSocket 监听绑定的 IP 地址（默认 `127.0.0.1`）。绑定非回环地址时必须同时配置 `authToken`，否则服务拒绝启动。
-* `port`: WebSocket 端口（默认 `8765`，需与 Blender 插件设置一致）。
+* `port`: WebSocket 端口（默认 `21924`，需与 Blender 远程模式设置一致；单人本地同步默认直接走本机 IPC，不占用网络端口）。
+* `requireTokenOnIpc`: 是否要求本地 IPC 连接也校验 `authToken`（默认 `false`，按需开启）。
 * `autoStartOnWorldLoad`: 进入单人世界或服务器启动时是否自动启动 WebSocket 服务。
 * `authToken`: 非回环绑定所需的共享密钥；Blender 端需填写相同值。为空时仅允许 `127.0.0.1`。
 * `allowLoopbackWithoutToken`: 绑定回环地址时是否跳过 Token 校验（默认 `false`）。纯本地 Blender 连接可打开；非回环绑定始终强制 Token。

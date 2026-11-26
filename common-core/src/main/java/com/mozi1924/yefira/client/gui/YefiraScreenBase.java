@@ -26,6 +26,7 @@ public abstract class YefiraScreenBase extends Screen {
     private SyncMode currentMode = SyncMode.CLIENT;
     private Button clientModeBtn;
     private Button serverModeBtn;
+    private Button ipcTokenButton;
     private Button loopbackAuthButton;
 
     private EditBox hostEdit;
@@ -66,7 +67,12 @@ public abstract class YefiraScreenBase extends Screen {
             } catch (NumberFormatException ignored) {
             }
         }
-        return 8765;
+        return 21924;
+    }
+
+    private Component ipcTokenLabel(YefiraConfig cfg) {
+        return Component.translatable("yefira.gui.ipc_token",
+                cfg.isRequireTokenOnIpc() ? "ON" : "OFF");
     }
 
     private Component loopbackAuthLabel(YefiraConfig cfg) {
@@ -139,8 +145,18 @@ public abstract class YefiraScreenBase extends Screen {
         this.tokenEdit.setEditable(!isServerMode);
         this.addRenderableWidget(this.tokenEdit);
 
+        this.ipcTokenButton = Button.builder(ipcTokenLabel(cfg), btn -> {
+            applyConfigFromFields();
+            cfg.setRequireTokenOnIpc(!cfg.isRequireTokenOnIpc());
+            YefiraConfig.save();
+            btn.setMessage(ipcTokenLabel(cfg));
+            WebSocketServerManager.getInstance().restartPreservingMode();
+        }).bounds(centerX - 100, startY + 86, 200, 20).build();
+        this.ipcTokenButton.active = !isServerMode;
+        this.addRenderableWidget(this.ipcTokenButton);
+
         this.autoStartCheckbox = VersionCompat.client().createCheckbox(
-            centerX - 100, startY + 90, 200, 20,
+            centerX - 100, startY + 108, 200, 20,
             this.font,
             Component.translatable("yefira.gui.autostart"),
             cfg.isAutoStartOnWorldLoad(),
@@ -156,12 +172,12 @@ public abstract class YefiraScreenBase extends Screen {
             cfg.setAllowLoopbackWithoutToken(!cfg.isAllowLoopbackWithoutToken());
             YefiraConfig.save();
             btn.setMessage(loopbackAuthLabel(cfg));
-        }).bounds(centerX - 100, startY + 110, 200, 20).build();
+        }).bounds(centerX - 100, startY + 130, 200, 20).build();
         this.loopbackAuthButton.active = !isServerMode;
         this.addRenderableWidget(this.loopbackAuthButton);
 
         WebSocketServerManager localServer = WebSocketServerManager.getInstance();
-        Component startStopText = localServer.isRunning()
+        Component startStopText = localServer.isWsRunning()
                 ? Component.translatable("yefira.gui.server.stop")
                 : Component.translatable("yefira.gui.server.start");
 
@@ -173,14 +189,14 @@ public abstract class YefiraScreenBase extends Screen {
                     mc.player.connection.sendCommand("yefira server start");
                 }
             } else {
-                if (localServer.isRunning()) {
+                if (localServer.isWsRunning()) {
                     localServer.stopServer();
                 } else if (!localServer.startServer(cfg.getHost(), cfg.getPort())) {
                     reportStartFailure(mc, cfg, localServer);
                 }
                 updateButtonLabels();
             }
-        }).bounds(centerX - 100, startY + 140, 95, 20).build();
+        }).bounds(centerX - 100, startY + 156, 95, 20).build();
         this.startStopButton.active = !isServerMode || op;
         this.addRenderableWidget(this.startStopButton);
 
@@ -197,7 +213,7 @@ public abstract class YefiraScreenBase extends Screen {
                 }
                 updateButtonLabels();
             }
-        }).bounds(centerX + 5, startY + 140, 95, 20).build();
+        }).bounds(centerX + 5, startY + 156, 95, 20).build();
         this.restartButton.active = !isServerMode || op;
         this.addRenderableWidget(this.restartButton);
 
@@ -210,7 +226,7 @@ public abstract class YefiraScreenBase extends Screen {
             } else {
                 SelectionManager.getInstance().clearSelection();
             }
-        }).bounds(centerX - 100, startY + 168, 200, 20).build();
+        }).bounds(centerX - 100, startY + 182, 200, 20).build();
         this.clearSelectionButton.active = !isServerMode || op;
         this.addRenderableWidget(this.clearSelectionButton);
 
@@ -256,7 +272,7 @@ public abstract class YefiraScreenBase extends Screen {
     private void updateButtonLabels() {
         WebSocketServerManager server = WebSocketServerManager.getInstance();
         if (startStopButton != null && currentMode == SyncMode.CLIENT) {
-            startStopButton.setMessage(server.isRunning()
+            startStopButton.setMessage(server.isWsRunning()
                     ? Component.translatable("yefira.gui.server.stop")
                     : Component.translatable("yefira.gui.server.start"));
         }
@@ -282,12 +298,12 @@ public abstract class YefiraScreenBase extends Screen {
         if (multi && currentMode == SyncMode.CLIENT) {
             graphics.drawCenteredText(this.font,
                     Component.translatable("yefira.gui.local.note"),
-                    centerX, startY + 192, 0xAAAAAA);
+                    centerX, startY + 206, 0xAAAAAA);
         }
         if (currentMode == SyncMode.SERVER && !hasOpPermission()) {
             graphics.drawCenteredText(this.font,
                     Component.translatable("yefira.gui.mode.server.no_op"),
-                    centerX, startY + 192, 0xFF5555);
+                    centerX, startY + 206, 0xFF5555);
         }
 
         Component statusComponent;
@@ -298,16 +314,21 @@ public abstract class YefiraScreenBase extends Screen {
         } else {
             WebSocketServerManager server = WebSocketServerManager.getInstance();
             boolean running = server.isRunning();
-            String host = server.getHost() != null ? server.getHost() : "0.0.0.0";
+            boolean wsRunning = server.isWsRunning();
+            String host = server.getHost() != null ? server.getHost() : "127.0.0.1";
             String startErr = !running ? server.getLastStartError() : null;
-            statusComponent = running
-                    ? Component.translatable("yefira.gui.status.running", host, String.valueOf(server.getPort()), String.valueOf(server.getConnectedCount()))
-                    : (startErr != null && !startErr.isBlank()
-                            ? Component.literal("○ " + startErr)
-                            : Component.translatable("yefira.gui.status.stopped"));
+            if (wsRunning) {
+                statusComponent = Component.translatable("yefira.gui.status.running", host, String.valueOf(server.getPort()), String.valueOf(server.getConnectedCount()));
+            } else if (running) {
+                statusComponent = Component.translatable("yefira.gui.status.ipc_running", String.valueOf(server.getConnectedCount()));
+            } else if (startErr != null && !startErr.isBlank()) {
+                statusComponent = Component.literal("○ " + startErr);
+            } else {
+                statusComponent = Component.translatable("yefira.gui.status.stopped");
+            }
             statusColor = running ? 0x55FF55 : 0xFF5555;
         }
-        graphics.drawCenteredText(this.font, statusComponent, centerX, startY + 212, statusColor);
+        graphics.drawCenteredText(this.font, statusComponent, centerX, startY + 220, statusColor);
 
         SelectionManager mgr = SelectionManager.getInstance();
         SelectionBox sel = mgr.getCurrentSelection();
@@ -319,9 +340,9 @@ public abstract class YefiraScreenBase extends Screen {
                     sel.getMin().toShortString(), sel.getMax().toShortString(),
                     String.valueOf(sel.getSizeX()), String.valueOf(sel.getSizeY()),
                     String.valueOf(sel.getSizeZ()), String.valueOf(sel.getVolume()));
-            graphics.drawCenteredText(this.font, selText, centerX, startY + 228, color);
+            graphics.drawCenteredText(this.font, selText, centerX, startY + 234, color);
         } else {
-            graphics.drawCenteredText(this.font, Component.translatable("yefira.gui.selection.none"), centerX, startY + 228, 0xAAAAAA);
+            graphics.drawCenteredText(this.font, Component.translatable("yefira.gui.selection.none"), centerX, startY + 234, 0xAAAAAA);
         }
     }
 

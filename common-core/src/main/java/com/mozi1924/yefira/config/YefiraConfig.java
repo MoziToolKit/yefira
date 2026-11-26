@@ -28,7 +28,7 @@ public class YefiraConfig {
     // Bind to loopback by default. A non-loopback host requires a non-empty
     // authToken; the WebSocket server refuses to start otherwise.
     private String host = "127.0.0.1";
-    private int port = 8765;
+    private int port = 21924;
     private boolean autoStartOnWorldLoad = false;
     private long maxVolumeSoftLimit = 262144L; // Default 64x64x64 = 262,144 blocks
     private int maxSideSoftLimit = 256;        // Default 256 max single side length
@@ -39,6 +39,11 @@ public class YefiraConfig {
      * local Blender connection while keeping non-loopback binds token-gated.
      */
     private boolean allowLoopbackWithoutToken = false;
+    /**
+     * When true, local IPC connections must also present authToken during HELLO.
+     * Off by default so local singleplayer sync works seamlessly out of the box.
+     */
+    private boolean requireTokenOnIpc = false;
 
     public static synchronized YefiraConfig getInstance() {
         return instance;
@@ -86,11 +91,14 @@ public class YefiraConfig {
             if (obj.has("allowLoopbackWithoutToken")) {
                 cfg.allowLoopbackWithoutToken = obj.get("allowLoopbackWithoutToken").getAsBoolean();
             }
+            if (obj.has("requireTokenOnIpc")) {
+                cfg.requireTokenOnIpc = obj.get("requireTokenOnIpc").getAsBoolean();
+            }
 
             instance = cfg;
-            Yefira.LOGGER.info("Loaded Yefira config: host={}, port={}, autoStart={}, maxVolumeSoftLimit={}, maxSideSoftLimit={}, authTokenConfigured={}, allowLoopbackWithoutToken={}",
+            Yefira.LOGGER.info("Loaded Yefira config: host={}, port={}, autoStart={}, maxVolumeSoftLimit={}, maxSideSoftLimit={}, authTokenConfigured={}, allowLoopbackWithoutToken={}, requireTokenOnIpc={}",
                     instance.host, instance.port, instance.autoStartOnWorldLoad, instance.maxVolumeSoftLimit, instance.maxSideSoftLimit,
-                    instance.authToken != null && !instance.authToken.isEmpty(), instance.allowLoopbackWithoutToken);
+                    instance.authToken != null && !instance.authToken.isEmpty(), instance.allowLoopbackWithoutToken, instance.requireTokenOnIpc);
         } catch (Exception e) {
             Yefira.LOGGER.error("Failed to load Yefira config, falling back to defaults", e);
             instance = new YefiraConfig();
@@ -109,6 +117,7 @@ public class YefiraConfig {
             obj.addProperty("maxSideSoftLimit", instance.maxSideSoftLimit);
             obj.addProperty("authToken", instance.authToken == null ? "" : instance.authToken);
             obj.addProperty("allowLoopbackWithoutToken", instance.allowLoopbackWithoutToken);
+            obj.addProperty("requireTokenOnIpc", instance.requireTokenOnIpc);
 
             if (configPath.getParent() != null && !Files.exists(configPath.getParent())) {
                 Files.createDirectories(configPath.getParent());
@@ -182,5 +191,13 @@ public class YefiraConfig {
 
     public void setAllowLoopbackWithoutToken(boolean allowLoopbackWithoutToken) {
         this.allowLoopbackWithoutToken = allowLoopbackWithoutToken;
+    }
+
+    public boolean isRequireTokenOnIpc() {
+        return requireTokenOnIpc;
+    }
+
+    public void setRequireTokenOnIpc(boolean requireTokenOnIpc) {
+        this.requireTokenOnIpc = requireTokenOnIpc;
     }
 }
